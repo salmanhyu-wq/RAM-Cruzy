@@ -1,0 +1,15 @@
+.build/
+__pycache__/
+.DS_Store
+.env
+.env.*
+*.app/
+*.pem
+*.key
+*.p12
+*.db
+*.db-wal
+*.db-shm
+*.log
+history-v1.json
+model-inventory-v1.json
