@@ -11,6 +11,13 @@ struct ModelFile: Identifiable, Sendable, Codable {
     let purpose: ModelPurpose
     var id: String { url.resolvingSymlinksInPath().path }
     var title: String { url.lastPathComponent }
+    private static let downloadSuffix = " · 다운로드 필요"
+
+    var displayFormat: String {
+        guard format.hasSuffix(Self.downloadSuffix) else { return AppLanguage.active.string(format) }
+        let base = String(format.dropLast(Self.downloadSuffix.count))
+        return AppLanguage.active.string(base) + AppLanguage.active.string(Self.downloadSuffix)
+    }
 
     static let extensions: Set<String> = ["gguf", "safetensors", "ckpt", "pth", "pt", "onnx", "bin"]
 
@@ -38,7 +45,7 @@ struct ModelFile: Identifiable, Sendable, Codable {
                     if lstat(target.path, &flags) == 0, flags.st_flags & UInt32(SF_DATALESS) != 0 { cloudOnly = true }
                 }
             }
-            return Self(url: file, bytes: bytes, isDirectory: true, isLoRA: lora, format: (gguf ? "GGUF 묶음" : "모델 폴더") + (cloudOnly ? " · 다운로드 필요" : ""),
+            return Self(url: file, bytes: bytes, isDirectory: true, isLoRA: lora, format: (gguf ? "GGUF 묶음" : "모델 폴더") + (cloudOnly ? Self.downloadSuffix : ""),
                         purpose: lora ? .lora : ModelPurpose.guess(file.lastPathComponent))
         }
         guard type.isRegularFile == true, extensions.contains(file.pathExtension.lowercased()) else { return nil }
@@ -47,7 +54,7 @@ struct ModelFile: Identifiable, Sendable, Codable {
         var lora = file.pathComponents.contains { $0.lowercased().contains("lora") } || file.lastPathComponent.lowercased().contains("adapter")
         var diskInfo = stat()
         if lstat(physical.path, &diskInfo) == 0, diskInfo.st_flags & UInt32(SF_DATALESS) != 0 {
-            return Self(url: file, bytes: bytes, isDirectory: false, isLoRA: lora, format: ext.uppercased() + " · 다운로드 필요",
+            return Self(url: file, bytes: bytes, isDirectory: false, isLoRA: lora, format: ext.uppercased() + Self.downloadSuffix,
                         purpose: lora ? .lora : ModelPurpose.guess(file.lastPathComponent))
         }
         if ext == "gguf" || ext == "safetensors" {
@@ -75,24 +82,24 @@ struct ModelFile: Identifiable, Sendable, Codable {
     }
 
     func compatibility(with provider: Provider) -> String? {
-        if format.contains("다운로드 필요") { return "클라우드 파일이에요. Finder에서 다운로드한 뒤 추가해 주세요." }
-        if provider == .mlxStudio { return "이 서버는 모델 가져오기 기능을 공개하지 않아요. 앱에서 저장 위치를 확인해 주세요." }
+        if format.contains("다운로드 필요") { return tr("클라우드 파일이에요. Finder에서 다운로드한 뒤 추가해 주세요.") }
+        if provider == .mlxStudio { return tr("이 서버는 모델 가져오기 기능을 공개하지 않아요. 앱에서 저장 위치를 확인해 주세요.") }
         if isLoRA {
-            return provider == .comfy || provider == .mlxServe ? nil : "로라는 기본 모델과 함께 쓰는 추가 파일이에요. ComfyUI 또는 MLX-Serve에 연결할 수 있어요."
+            return provider == .comfy || provider == .mlxServe ? nil : tr("로라는 기본 모델과 함께 쓰는 추가 파일이에요. ComfyUI 또는 MLX-Serve에 연결할 수 있어요.")
         }
         if provider == .comfy {
-            if isDirectory { return "ComfyUI에는 이미지·영상용 가중치 파일이나 로라를 연결해 주세요." }
-            if [.chat, .embedding].contains(purpose) { return "대화용 모델이에요. 대화 모델을 지원하는 서버를 골라 주세요." }
+            if isDirectory { return tr("ComfyUI에는 이미지·영상용 가중치 파일이나 로라를 연결해 주세요.") }
+            if [.chat, .embedding].contains(purpose) { return tr("대화용 모델이에요. 대화 모델을 지원하는 서버를 골라 주세요.") }
             return nil
         }
         if provider == .splash && [.image, .video, .music, .voice, .embedding, .support].contains(purpose) {
-            return "Splash에는 지원하는 대화 모델을 추가해 주세요. 생성용 모델과 보조 파일은 해당 작업 서버에서 사용해요."
+            return tr("Splash에는 지원하는 대화 모델을 추가해 주세요. 생성용 모델과 보조 파일은 해당 작업 서버에서 사용해요.")
         }
         if !isDirectory && url.pathExtension.lowercased() != "gguf" {
-            return "이 서버에는 GGUF 파일 또는 설정과 가중치가 함께 있는 모델 폴더를 연결해 주세요."
+            return tr("이 서버에는 GGUF 파일 또는 설정과 가중치가 함께 있는 모델 폴더를 연결해 주세요.")
         }
         if provider == .lmStudio && [.image, .video, .music, .voice, .support].contains(purpose) {
-            return "LM Studio에서 지원하는 대화·임베딩 모델을 골라 주세요."
+            return tr("LM Studio에서 지원하는 대화·임베딩 모델을 골라 주세요.")
         }
         return nil
     }
@@ -265,6 +272,7 @@ struct ModelTransferRequest: Identifiable {
 
 enum ModelTransferMode: String, CaseIterable, Identifiable {
     case link = "공유 연결", copy = "복사해서 추가"
+    var title: String { AppLanguage.active.string(rawValue) }
     var id: Self { self }
 }
 
@@ -272,6 +280,7 @@ enum ComfyModelFolder: String, CaseIterable, Identifiable {
     case automatic = "자동 분류", checkpoints = "이미지 전체 모델", diffusion_models = "이미지·영상 가중치"
     case loras = "로라", vae = "이미지 변환 모델", text_encoders = "글 이해 모델"
     case controlnet = "구도·자세 보조", upscale_models = "화질 확대 모델", audio_encoders = "소리 이해 모델"
+    var title: String { AppLanguage.active.string(rawValue) }
     var id: Self { self }
     var folder: String? {
         switch self {
@@ -322,7 +331,7 @@ enum ModelFileTransfer {
         if type.isSymbolicLink == true {
             let physical = source.resolvingSymlinksInPath()
             if (try physical.resourceValues(forKeys: [.isDirectoryKey])).isDirectory == true {
-                throw ManagementError.message("모델 안에 공유 폴더가 있어요. 이 항목은 공유 연결로 추가해 주세요.")
+                throw ManagementError.message(tr("모델 안에 공유 폴더가 있어요. 이 항목은 공유 연결로 추가해 주세요."))
             }
             try manager.copyItem(at: physical, to: destination)
         } else if type.isDirectory == true {
@@ -340,17 +349,17 @@ enum ModelFileTransfer {
         let manager = FileManager.default
         let plans = try files.map { file -> (ModelFile, URL) in
             if let reason = file.compatibility(with: provider) { throw ManagementError.message(reason) }
-            guard let fresh = ModelFile.inspect(file.url), fresh.id == file.id, fresh.bytes == file.bytes else { throw ManagementError.message("파일 상태가 바뀌었어요. 다시 찾아 주세요.") }
+            guard let fresh = ModelFile.inspect(file.url), fresh.id == file.id, fresh.bytes == file.bytes else { throw ManagementError.message(tr("파일 상태가 바뀌었어요. 다시 찾아 주세요.")) }
             let destination = destination(for: file, to: provider, root: root, category: category)
             guard !manager.fileExists(atPath: destination.path), (try? manager.destinationOfSymbolicLink(atPath: destination.path)) == nil else {
-                throw ManagementError.message("‘\(file.title)’과 같은 이름이 대상 서버에 있어요.")
+                throw ManagementError.message(tr("‘\(file.title)’과 같은 이름이 대상 서버에 있어요."))
             }
             guard !destination.standardizedFileURL.path.hasPrefix(file.url.standardizedFileURL.path + "/") else {
-                throw ManagementError.message("모델 폴더 안으로 같은 모델을 추가할 수 없어요.")
+                throw ManagementError.message(tr("모델 폴더 안으로 같은 모델을 추가할 수 없어요."))
             }
             return (file, destination)
         }
-        guard Set(plans.map { $0.1.path }).count == plans.count else { throw ManagementError.message("같은 이름의 파일이 여러 개예요. 하나씩 추가해 주세요.") }
+        guard Set(plans.map { $0.1.path }).count == plans.count else { throw ManagementError.message(tr("같은 이름의 파일이 여러 개예요. 하나씩 추가해 주세요.")) }
         var completed: [URL] = []
         do {
             for (file, destination) in plans {

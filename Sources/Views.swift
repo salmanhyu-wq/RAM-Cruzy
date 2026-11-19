@@ -50,7 +50,7 @@ struct MemoryReadout: View {
         let percent = Int((fraction * 100).rounded())
         VStack(alignment: .leading, spacing: 9) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("램 사용률").font(.system(size: 11, weight: .medium)).foregroundStyle(MonitorPalette.accent)
+                Text(tr("램 사용률")).font(.system(size: 11, weight: .medium)).foregroundStyle(MonitorPalette.accent)
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
                     Text(memory == nil ? "—" : String(percent))
                         .font(.system(size: 37, weight: .semibold)).tracking(-1.5)
@@ -61,13 +61,13 @@ struct MemoryReadout: View {
                 .minimumScaleFactor(0.8)
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("램 사용률")
-            .accessibilityValue(memory == nil ? "확인 중" : "\(percent)%")
-            .help(memory.map { "프로그램 등 \(ram($0.applicationBytes)) · 시스템 고정 \(ram($0.wired)) · 압축 \(ram($0.compressed))" } ?? "램 사용량을 확인하는 중")
+            .accessibilityLabel(tr("램 사용률"))
+            .accessibilityValue(memory == nil ? tr("확인 중") : "\(percent)%")
+            .help(memory.map { tr("프로그램 등 \(ram($0.applicationBytes)) · 시스템 고정 \(ram($0.wired)) · 압축 \(ram($0.compressed))") } ?? tr("램 사용량을 확인하는 중"))
 
             HStack(spacing: 5) {
                 Circle().frame(width: 5, height: 5).accessibilityHidden(true)
-                Text(pressure == 1 ? "여유 있음" : pressureText(pressure))
+                Text(pressure == 1 ? tr("여유 있음") : pressureText(pressure))
             }
             .font(.system(size: 11, weight: .medium))
             .foregroundStyle(pressure == 1 ? MonitorPalette.good : pressureColor(pressure))
@@ -75,7 +75,7 @@ struct MemoryReadout: View {
             .help(memoryStatusText(pressure))
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("램 사용량").font(.system(size: 11)).foregroundStyle(MonitorPalette.secondary)
+                Text(tr("램 사용량")).font(.system(size: 11)).foregroundStyle(MonitorPalette.secondary)
                 Text(ram(memory?.used)).font(.system(size: 14, weight: .semibold))
                 if let memory {
                     Text("/ " + ram(memory.total)).font(.system(size: 11)).foregroundStyle(MonitorPalette.secondary)
@@ -84,11 +84,11 @@ struct MemoryReadout: View {
             .accessibilityElement(children: .combine)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("스왑").font(.system(size: 11)).foregroundStyle(MonitorPalette.secondary)
+                Text(tr("스왑")).font(.system(size: 11)).foregroundStyle(MonitorPalette.secondary)
                 Text(ram(memory?.swap)).font(.system(size: 14, weight: .semibold))
             }
             .accessibilityElement(children: .combine)
-            .help("맥이 디스크에 임시로 저장한 메모리 양")
+            .help(tr("맥이 디스크에 임시로 저장한 메모리 양"))
         }
         .foregroundStyle(MonitorPalette.text)
         .monospacedDigit()
@@ -98,25 +98,25 @@ struct MemoryReadout: View {
 extension Activity {
     var friendlyLabel: String {
         switch self {
-        case .working: "사용 중"
-        case .queued: "기다리는 중"
-        case .idle: "쉬는 중"
-        case .unloaded: "램에서 내려감"
-        case .unknown: "사용 여부 모름"
-        case .empty: "비어 있음"
-        case .stopping: "멈추는 중"
-        case .offline: "연결 안 됨"
-        case .loading: "불러오는 중"
+        case .working: tr("사용 중")
+        case .queued: tr("기다리는 중")
+        case .idle: tr("쉬는 중")
+        case .unloaded: tr("램에서 내려감")
+        case .unknown: tr("사용 여부 모름")
+        case .empty: tr("비어 있음")
+        case .stopping: tr("멈추는 중")
+        case .offline: tr("연결 안 됨")
+        case .loading: tr("불러오는 중")
         }
     }
 }
 
 func memoryStatusText(_ value: Int32?) -> String {
     switch value {
-    case 1: "메모리 여유가 있어요"
-    case 2: "메모리 여유가 적어요"
-    case 4: "메모리가 많이 부족해요"
-    default: "메모리 상태를 확인하고 있어요"
+    case 1: tr("메모리 여유가 있어요")
+    case 2: tr("메모리 여유가 적어요")
+    case 4: tr("메모리가 많이 부족해요")
+    default: tr("메모리 상태를 확인하고 있어요")
     }
 }
 
@@ -126,16 +126,16 @@ func memoryStatusText(_ value: Int32?) -> String {
     var body: some View {
         Toggle(isOn: $model.autoRecoveryEnabled) {
             HStack(spacing: 4) {
-                Text("자동 비우기").font(.callout.weight(.medium))
-                Text(model.autoRecoveryEnabled ? "켬" : "끔").font(.caption).foregroundStyle(.secondary)
+                Text(tr("자동 비우기")).font(.callout.weight(.medium))
+                Text(model.autoRecoveryEnabled ? tr("켬") : tr("끔")).font(.caption).foregroundStyle(.secondary)
             }
         }
         .toggleStyle(.switch)
         .controlSize(.small)
         .tint(MonitorPalette.switchTint)
         .fixedSize()
-        .accessibilityLabel("쉬는 AI 메모리 자동 비우기")
-        .help("맥이 디스크에 임시 메모리를 쓰면, 쉬는 AI 항목만 램에서 내려요.")
+        .accessibilityLabel(tr("쉬는 AI 메모리 자동 비우기"))
+        .help(tr("맥이 디스크에 임시 메모리를 쓰면, 쉬는 AI 항목만 램에서 내려요."))
     }
 }
 
@@ -223,6 +223,7 @@ func memoryStatusText(_ value: Int32?) -> String {
         .fixedSize(horizontal: true, vertical: true)
         .background(MonitorPalette.background)
         .tint(MonitorPalette.accent)
+        .environment(\.locale, AppLanguage.active.locale)
         .onChange(of: panelState.contentHeight) { _, _ in resize() }
         .onChange(of: panelState.maximumHeight) { _, _ in resize() }
         .onChange(of: model.runningAction) { _, running in
@@ -290,15 +291,15 @@ func memoryStatusText(_ value: Int32?) -> String {
                 .foregroundStyle(MonitorPalette.text)
                 .accessibilityAddTraits(.isHeader)
             HStack(spacing: 4) {
-                headerButton("전체 창 열기", symbol: "memorychip", action: open)
-                headerButton(panelState.servers ? "램 관리로 돌아가기" : "서버 관리",
+                headerButton(tr("전체 창 열기"), symbol: "memorychip", action: open)
+                headerButton(panelState.servers ? tr("램 관리로 돌아가기") : tr("서버 관리"),
                              symbol: "server.rack", selected: panelState.servers) {
                     panelState.servers.toggle()
                 }
                 .disabled(pending != nil)
                 Spacer()
                 if let openSettings {
-                    headerButton("설정 열기", symbol: "gearshape", action: openSettings)
+                    headerButton(tr("설정 열기"), symbol: "gearshape", action: openSettings)
                 }
             }
             .padding(.horizontal, 12)
@@ -328,12 +329,12 @@ func memoryStatusText(_ value: Int32?) -> String {
                     Button {
                         model.releaseIdle()
                     } label: {
-                        Label(model.runningAction ? "처리 중…" : "쉬는 AI \(idleCount)개 비우기",
+                        Label(model.runningAction ? tr("처리 중…") : tr("쉬는 AI \(idleCount)개 비우기"),
                               systemImage: model.runningAction ? "hourglass" : "arrow.down.to.line")
                     }
                     .buttonStyle(MonitorButtonStyle(prominent: true))
                     .disabled(model.runningAction)
-                    .accessibilityHint("쉬는 항목만 램에서 내려요. 필요하면 다시 불러와요.")
+                    .accessibilityHint(tr("쉬는 항목만 램에서 내려요. 필요하면 다시 불러와요."))
                 } else {
                     Label(recoveryUnavailable, systemImage: "info.circle")
                         .font(.callout.weight(.medium))
@@ -345,7 +346,7 @@ func memoryStatusText(_ value: Int32?) -> String {
             }
             HStack(alignment: .center, spacing: 12) {
                 if let openBoost {
-                    Button(model.boostRunning ? "GPU 상한 원복" : "램 쥐어짜기", systemImage: "gauge.with.needle") {
+                    Button(model.boostRunning ? tr("GPU 상한 원복") : tr("램 쥐어짜기"), systemImage: "gauge.with.needle") {
                         if model.boostRunning { model.stopGPUBoost() }
                         else { openBoost() }
                     }
@@ -353,7 +354,7 @@ func memoryStatusText(_ value: Int32?) -> String {
                     .fixedSize()
                     .disabled(model.runningAction && !model.boostRunning)
                 }
-                Text("자동 비우기는 맥이 디스크에 임시 메모리를 쓸 때 작동해요.")
+                Text(tr("자동 비우기는 맥이 디스크에 임시 메모리를 쓸 때 작동해요."))
                     .font(.caption)
                     .foregroundStyle(MonitorPalette.secondary)
                     .multilineTextAlignment(.trailing)
@@ -369,29 +370,29 @@ func memoryStatusText(_ value: Int32?) -> String {
     }
 
     private var recoveryUnavailable: String {
-        if model.servers.isEmpty { return "AI 프로그램 확인 중" }
-        if model.servers.allSatisfy({ $0.activity == .offline }) { return "연결된 AI 프로그램이 없어요" }
-        return "지금 비울 쉬는 AI가 없어요"
+        if model.servers.isEmpty { return tr("AI 프로그램 확인 중") }
+        if model.servers.allSatisfy({ $0.activity == .offline }) { return tr("연결된 AI 프로그램이 없어요") }
+        return tr("지금 비울 쉬는 AI가 없어요")
     }
 
     private func occupiedList(entries: [QuickEntry], other: [ServerReading], activeCount: Int) -> some View {
         let firstByProvider = Dictionary(entries.map { ($0.provider, $0.id) }, uniquingKeysWith: { first, _ in first })
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text("램을 쓰는 AI").font(.system(size: 14, weight: .semibold))
+                Text(tr("램을 쓰는 AI")).font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(MonitorPalette.text)
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 0)
                 if activeCount > 0 {
-                    Text("진행·대기 \(activeCount)개").font(.caption).foregroundStyle(MonitorPalette.accent)
+                    Text(tr("진행·대기 \(activeCount)개")).font(.caption).foregroundStyle(MonitorPalette.accent)
                 }
             }
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 0) {
                 GridRow {
-                    Text("앱 · 작업").frame(maxWidth: .infinity, alignment: .leading)
-                    Text("상태").gridColumnAlignment(.trailing)
-                    Text("사용량").gridColumnAlignment(.trailing)
-                    Text("관리").gridColumnAlignment(.trailing)
+                    Text(tr("앱 · 작업")).frame(maxWidth: .infinity, alignment: .leading)
+                    Text(tr("상태")).gridColumnAlignment(.trailing)
+                    Text(tr("사용량")).gridColumnAlignment(.trailing)
+                    Text(tr("관리")).gridColumnAlignment(.trailing)
                 }
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(MonitorPalette.secondary)
@@ -420,15 +421,15 @@ func memoryStatusText(_ value: Int32?) -> String {
         let server = model.servers.first { $0.id == entry.provider }
         let last = entry.provider == .splash && server?.models.contains(where: { $0.id == row.id }) == true &&
             server?.jobs.contains(where: { $0.activity != .empty }) == false ? server?.recentJobs.first : nil
-        let title = row.id == "comfy-cache" ? "임시 데이터" : last?.conversationTitle ?? row.readableTitle
+        let title = row.id == "comfy-cache" ? tr("임시 데이터") : last?.conversationTitle ?? row.readableTitle
         let parts = quickContext(entry)
         let owner: String?
         if let last {
-            owner = "마지막 사용 · " + last.title
+            owner = tr("마지막 사용 · ") + last.title
         } else if row.conversationTitle != nil {
             owner = row.title
         } else if entry.provider == .splash && row.sessionIdentifier != nil {
-            owner = "대화 제목 미확인"
+            owner = tr("대화 제목 미확인")
         } else {
             owner = nil
         }
@@ -448,8 +449,8 @@ func memoryStatusText(_ value: Int32?) -> String {
                     .accessibilityLabel("\(row.actionLabel), \(title), \(row.title), \(parts)")
                 }
                 if entry.provider == .comfy, row.id == "comfy-cache", model.comfyStopTarget != nil {
-                    Button("서버 종료…") { setPending(model.comfyStopPrompt()) }
-                        .accessibilityLabel("ComfyUI 서버 종료")
+                    Button(tr("서버 종료…")) { setPending(model.comfyStopPrompt()) }
+                        .accessibilityLabel(tr("ComfyUI 서버 종료"))
                 }
             }
             .buttonStyle(MonitorButtonStyle())
@@ -467,14 +468,14 @@ func memoryStatusText(_ value: Int32?) -> String {
         } else if entry.provider == .splash && row.sessionIdentifier == nil {
             parts.append(URL(fileURLWithPath: row.title).lastPathComponent)
         } else if entry.provider == .comfy {
-            parts.append("이미지·영상 생성")
+            parts.append(tr("이미지·영상 생성"))
         }
         return parts.joined(separator: " · ")
     }
 
     private func usageRow(_ server: ServerReading) -> some View {
         let names = server.statusModelNames
-        let detail = names.isEmpty ? "앱과 임시 데이터" : names.prefix(2).joined(separator: " · ")
+        let detail = names.isEmpty ? tr("앱과 임시 데이터") : names.prefix(2).joined(separator: " · ")
         return GridRow(alignment: .center) {
             serverLabel(server.id, detail: detail)
             activityStatus(server.activity)
@@ -514,8 +515,8 @@ func memoryStatusText(_ value: Int32?) -> String {
             .font(.system(size: 12, weight: .semibold)).monospacedDigit()
             .foregroundStyle(bytes == nil ? MonitorPalette.secondary : MonitorPalette.text)
             .fixedSize(horizontal: true, vertical: false)
-            .accessibilityLabel("앱 전체 램 사용량 " + ram(bytes))
-            .help("앱 전체 램 사용량")
+            .accessibilityLabel(tr("앱 전체 램 사용량 ") + ram(bytes))
+            .help(tr("앱 전체 램 사용량"))
     }
 
     func resetPrompt() { setPending(nil) }
@@ -538,7 +539,7 @@ func memoryStatusText(_ value: Int32?) -> String {
                 .fixedSize(horizontal: false, vertical: true)
             HStack {
                 Spacer()
-                Button("돌아가기") { setPending(nil) }
+                Button(tr("돌아가기")) { setPending(nil) }
                     .buttonStyle(MonitorButtonStyle())
                     .keyboardShortcut(.cancelAction)
                 Button(prompt.button, role: .destructive) {
@@ -569,8 +570,8 @@ struct GachaBanner: View {
                         .accessibilityHidden(true)
                 }
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("마이뮤직 가챠").font(.system(size: 12, weight: .bold))
-                    Text("노래 만들기").font(.system(size: 11, weight: .medium))
+                    Text(tr("마이뮤직 가챠")).font(.system(size: 12, weight: .bold))
+                    Text(tr("노래 만들기")).font(.system(size: 11, weight: .medium))
                         .foregroundStyle(MonitorPalette.secondary)
                 }.lineLimit(1)
                 Spacer(minLength: 2)
@@ -582,8 +583,8 @@ struct GachaBanner: View {
             .background(MonitorSurface())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("마이뮤직 가챠 웹사이트 열기")
-        .help("마이뮤직 가챠 웹사이트 열기")
+        .accessibilityLabel(tr("마이뮤직 가챠 웹사이트 열기"))
+        .help(tr("마이뮤직 가챠 웹사이트 열기"))
     }
 }
 
@@ -597,19 +598,19 @@ struct AboutScreen: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(AppIdentity.name).font(.system(size: 23, weight: .semibold))
-                    Text("버전 " + AppIdentity.version).foregroundStyle(.secondary)
+                    Text(tr("버전 ") + AppIdentity.version).foregroundStyle(.secondary)
                 }
             }
             VStack(alignment: .leading, spacing: 11) {
-                Label("오늘의 명언", systemImage: "quote.opening")
+                Label(tr("오늘의 명언"), systemImage: "quote.opening")
                     .foregroundStyle(.secondary).font(.system(size: 13, weight: .semibold))
-                Text("“전 세계 자원을 어떻게 나눠 쓸지 생각하면, 한정된 램을 각자 컴퓨터에 넣어 두고 고작 5%의 시간만 쓰는 건 꽤 끔찍한 일이죠.”")
+                Text(tr("“전 세계 자원을 어떻게 나눠 쓸지 생각하면, 한정된 램을 각자 컴퓨터에 넣어 두고 고작 5%의 시간만 쓰는 건 꽤 끔찍한 일이죠.”"))
                     .font(.system(size: 19, weight: .medium)).lineSpacing(5)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("샘 알트만 · 2026년 10월 29일, 한국어 번역")
+                Text(tr("샘 알트만 · 2026년 10월 29일, 한국어 번역"))
                     .font(.system(size: 13)).foregroundStyle(.secondary)
                 Link(destination: Self.transcript) {
-                    Label("팟캐스트 원문", systemImage: "arrow.up.right")
+                    Label(tr("팟캐스트 원문"), systemImage: "arrow.up.right")
                 }.font(.system(size: 13))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -636,34 +637,34 @@ struct LibraryScreen: View {
         }
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
-                TextField("모델 이름 검색", text: $model.libraryQuery)
+                TextField(tr("모델 이름 검색"), text: $model.libraryQuery)
                     .textFieldStyle(.roundedBorder).controlSize(.large)
-                Picker("서버", selection: $model.libraryProvider) {
-                    Text("모든 서버").tag(nil as Provider?)
+                Picker(tr("서버"), selection: $model.libraryProvider) {
+                    Text(tr("모든 서버")).tag(nil as Provider?)
                     ForEach(Provider.allCases) { Text($0.title).tag(Optional($0)) }
-                }.labelsHidden().frame(maxWidth: 170).accessibilityLabel("서버 선택")
-                Picker("용도", selection: $model.libraryPurpose) {
-                    Text("모든 용도").tag(nil as ModelPurpose?)
-                    ForEach(ModelPurpose.allCases) { Text($0.rawValue).tag(Optional($0)) }
-                }.labelsHidden().frame(maxWidth: 140).accessibilityLabel("모델 용도 선택")
+                }.labelsHidden().frame(maxWidth: 170).accessibilityLabel(tr("서버 선택"))
+                Picker(tr("용도"), selection: $model.libraryPurpose) {
+                    Text(tr("모든 용도")).tag(nil as ModelPurpose?)
+                    ForEach(ModelPurpose.allCases) { Text($0.title).tag(Optional($0)) }
+                }.labelsHidden().frame(maxWidth: 140).accessibilityLabel(tr("모델 용도 선택"))
             }
             if !model.libraryLoaded {
-                ProgressView("저장된 모델 확인 중…")
+                ProgressView(tr("저장된 모델 확인 중…"))
             } else {
                 HStack {
-                    Text("\(filtered.count)개 모델").fontWeight(.semibold)
-                    Text("· 파일 크기 \(ram(filtered.reduce(UInt64(0)) { $0 + $1.bytes }))").foregroundStyle(.secondary)
+                    Text(tr("\(filtered.count)개 모델")).fontWeight(.semibold)
+                    Text(tr("· 파일 크기 \(ram(filtered.reduce(UInt64(0)) { $0 + $1.bytes }))")).foregroundStyle(.secondary)
                     Spacer()
-                    Button("목록 새로 고침", systemImage: "arrow.clockwise") {
+                    Button(tr("목록 새로 고침"), systemImage: "arrow.clockwise") {
                         Task { await model.refreshLibrary() }
                     }
                 }
                 if filtered.isEmpty {
                     if model.library.isEmpty {
-                        ContentUnavailableView("저장한 모델이 없어요", systemImage: "shippingbox")
+                        ContentUnavailableView(tr("저장한 모델이 없어요"), systemImage: "shippingbox")
                     } else {
-                        ContentUnavailableView("조건에 맞는 모델이 없어요", systemImage: "shippingbox",
-                                               description: Text("서버, 용도 또는 검색어를 바꿔 보세요."))
+                        ContentUnavailableView(tr("조건에 맞는 모델이 없어요"), systemImage: "shippingbox",
+                                               description: Text(tr("서버, 용도 또는 검색어를 바꿔 보세요.")))
                     }
                 }
             }
@@ -675,12 +676,12 @@ struct LibraryScreen: View {
                         HStack {
                             ProviderIcon(provider: provider, size: 30)
                             Text(provider.title).font(.system(size: 19, weight: .bold))
-                            Text("\(models.count)개").foregroundStyle(.secondary)
+                            Text(tr("\(models.count)개")).foregroundStyle(.secondary)
                         }.padding(.bottom, 7).padding(.top, 3)
                         ForEach(ModelPurpose.allCases) { purpose in
                             let group = models.filter { $0.purpose == purpose }
                             if !group.isEmpty {
-                                Text(purpose.rawValue).font(.system(size: 14, weight: .semibold))
+                                Text(purpose.title).font(.system(size: 14, weight: .semibold))
                                     .foregroundStyle(.secondary).padding(.top, 9).padding(.bottom, 4)
                                 ForEach(group) { libraryRow($0) }
                             }
@@ -701,10 +702,10 @@ struct LibraryScreen: View {
                     Text(item.title).font(.system(size: 15, weight: .semibold))
                         .lineLimit(2).help(item.key)
                     if let used {
-                        Text("최근 " + used.displayLast + (used.calls > 0 ? " · 확인 호출 \(used.calls)회" : ""))
+                        Text(tr("최근 ") + used.displayLast + (used.calls > 0 ? tr(" · 확인 호출 \(used.calls)회") : ""))
                             .foregroundStyle(.secondary).font(.system(size: 14))
                     } else if model.libraryLoaded {
-                        Text("최근 사용 확인 안 됨").foregroundStyle(.secondary).font(.system(size: 14))
+                        Text(tr("최근 사용 확인 안 됨")).foregroundStyle(.secondary).font(.system(size: 14))
                     }
                     if let block {
                         Text(block).foregroundStyle(.secondary).font(.system(size: 12))
@@ -712,41 +713,41 @@ struct LibraryScreen: View {
                 }
                 Spacer(minLength: 6)
                 if model.modelIsLoaded(item) {
-                    Button("램에서 내리기") { model.releaseModel(item) }.disabled(model.runningAction)
+                    Button(tr("램에서 내리기")) { model.releaseModel(item) }.disabled(model.runningAction)
                 } else if item.purpose != .lora && item.purpose != .support && item.provider != .mlxStudio {
-                    Button(item.provider == .comfy ? "워크플로 열기" : "램에 올리기") { model.selectLoad(item) }
+                    Button(item.provider == .comfy ? tr("워크플로 열기") : tr("램에 올리기")) { model.selectLoad(item) }
                         .disabled(model.runningAction)
                 }
                 Menu {
                     ForEach(Provider.allCases.filter { $0 != item.provider }) { target in
-                        Button(target.title + "에 추가…") { _ = model.receiveModels([item.url.absoluteString], provider: target) }
+                        Button(tr("\(target.title)에 추가…")) { _ = model.receiveModels([item.url.absoluteString], provider: target) }
                     }
                 } label: { Image(systemName: "arrow.up.right.square") }
-                .menuStyle(.borderlessButton).frame(width: 24).help("다른 서버에 추가")
-                Text(item.isLinked ? "링크" : ram(item.bytes))
+                .menuStyle(.borderlessButton).frame(width: 24).help(tr("다른 서버에 추가"))
+                Text(item.isLinked ? tr("링크") : ram(item.bytes))
                     .font(.system(size: 14, weight: .semibold)).monospacedDigit()
                     .frame(minWidth: 64, alignment: .trailing)
                 if model.isDirectLink(item) {
-                    Button("연결 해제") { model.selectUnlink(item) }.disabled(model.runningAction || model.modelIsLoaded(item))
+                    Button(tr("연결 해제")) { model.selectUnlink(item) }.disabled(model.runningAction || model.modelIsLoaded(item))
                 }
                 if let block {
                     Button {
                         NSWorkspace.shared.activateFileViewerSelecting([item.url])
                     } label: {
                         Label("Finder", systemImage: "folder").labelStyle(.iconOnly)
-                    }.help(block).accessibilityLabel("Finder에서 \(item.title) 보기. \(block)")
+                    }.help(block).accessibilityLabel(tr("Finder에서 \(item.title) 보기. \(block)"))
                 } else {
                     Button {
                         model.selectTrash(item)
                     } label: {
-                        Label("휴지통으로", systemImage: "trash").font(.system(size: 13, weight: .medium))
-                    }.disabled(model.runningAction).help("‘\(item.title)’을 휴지통으로 이동")
-                        .accessibilityLabel("\(item.title)을 휴지통으로 이동")
+                        Label(tr("휴지통으로"), systemImage: "trash").font(.system(size: 13, weight: .medium))
+                    }.disabled(model.runningAction).help(tr("‘\(item.title)’을 휴지통으로 이동"))
+                        .accessibilityLabel(tr("\(item.title)을 휴지통으로 이동"))
                 }
             }.padding(.vertical, 8)
         }
         .draggable(item.url)
-        .help("이 모델을 위의 서버 아이콘으로 끌어 추가할 수 있어요.")
+        .help(tr("이 모델을 위의 서버 아이콘으로 끌어 추가할 수 있어요."))
     }
 }
 
@@ -762,14 +763,14 @@ struct UsageScreen: View {
         let unused = model.library.filter { model.use(for: $0) == nil }
         VStack(alignment: .leading, spacing: 13) {
             HStack {
-                Text("최근 30일").font(.system(size: 18, weight: .semibold))
+                Text(tr("최근 30일")).font(.system(size: 18, weight: .semibold))
                 Spacer()
-                Button("기록 불러오기", systemImage: "arrow.clockwise") { Task { await model.refreshLibrary() } }
+                Button(tr("기록 불러오기"), systemImage: "arrow.clockwise") { Task { await model.refreshLibrary() } }
             }
-            Text("MLX-Serve와 Hermes가 기록한 호출 수, 이 앱이 켜져 있을 때 확인한 모델 활동을 표시해요.")
+            Text(tr("MLX-Serve와 Hermes가 기록한 호출 수, 이 앱이 켜져 있을 때 확인한 모델 활동을 표시해요."))
                 .foregroundStyle(.secondary).font(.system(size: 14))
             if rows.isEmpty {
-                Text("아직 확인된 사용 기록이 없어요.").foregroundStyle(.secondary)
+                Text(tr("아직 확인된 사용 기록이 없어요.")).foregroundStyle(.secondary)
             }
             LazyVStack(spacing: 0) {
               ForEach(rows) { row in
@@ -781,12 +782,12 @@ struct UsageScreen: View {
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 4) {
-                        if row.calls > 0 { Text("\(row.calls)회 호출").monospacedDigit().fontWeight(.semibold) }
+                        if row.calls > 0 { Text(tr("\(row.calls)회 호출")).monospacedDigit().fontWeight(.semibold) }
                         if row.observedSeconds >= 1 {
-                            Text("활동 관찰 \(shortDuration(row.observedSeconds))")
+                            Text(tr("활동 관찰 \(shortDuration(row.observedSeconds))"))
                                 .monospacedDigit().foregroundStyle(.secondary)
                         }
-                        if row.calls == 0 && row.observedSeconds < 1 { Text("최근 사용 확인").foregroundStyle(.secondary) }
+                        if row.calls == 0 && row.observedSeconds < 1 { Text(tr("최근 사용 확인")).foregroundStyle(.secondary) }
                     }.font(.system(size: 14))
                 }.padding(11)
                 if row.id != rows.last?.id { Divider().padding(.horizontal, 11) }
@@ -796,9 +797,9 @@ struct UsageScreen: View {
             }
             if model.libraryLoaded {
                 Divider().padding(.vertical, 2)
-                Text("사용 기록이 없는 모델 \(unused.count)개").font(.system(size: 18, weight: .semibold))
+                Text(tr("사용 기록이 없는 모델 \(unused.count)개")).font(.system(size: 18, weight: .semibold))
                 if !unused.isEmpty {
-                    Text("서버가 사용 기록을 제공하지 않거나 앱을 끈 동안 사용한 모델도 여기에 나올 수 있어요.")
+                    Text(tr("서버가 사용 기록을 제공하지 않거나 앱을 끈 동안 사용한 모델도 여기에 나올 수 있어요."))
                         .font(.system(size: 14)).foregroundStyle(.secondary)
                 }
                 ForEach(unused) { item in
@@ -824,15 +825,15 @@ struct SwapScreen: View {
         }
         let highest = max(1, sevenDates.map { values[History.day($0)]?.written ?? 0 }.max() ?? 1)
         VStack(alignment: .leading, spacing: 15) {
-            Text("램이 부족할 때 맥이 디스크를 임시로 사용한 기록이에요.")
+            Text(tr("램이 부족할 때 맥이 디스크를 임시로 사용한 기록이에요."))
                 .foregroundStyle(.secondary)
             HStack(spacing: 10) {
-                stat("지금 디스크 사용", ram(model.memory?.swap))
-                stat("오늘 디스크로 보냄", ram(today?.written))
-                stat("오늘 램으로 돌려옴", ram(today?.read))
+                stat(tr("지금 디스크 사용"), ram(model.memory?.swap))
+                stat(tr("오늘 디스크로 보냄"), ram(today?.written))
+                stat(tr("오늘 램으로 돌려옴"), ram(today?.read))
             }.padding(4).background(MonitorSurface())
             VStack(alignment: .leading, spacing: 10) {
-                Text("최근 7일 스왑으로 보낸 양").font(.system(size: 18, weight: .semibold))
+                Text(tr("최근 7일 스왑으로 보낸 양")).font(.system(size: 18, weight: .semibold))
                 HStack(alignment: .bottom, spacing: 12) {
                     ForEach(sevenDates, id: \.self) { date in
                         let bytes = values[History.day(date)]?.written ?? 0
@@ -841,19 +842,19 @@ struct SwapScreen: View {
                             RoundedRectangle(cornerRadius: 4)
                                 .fill(bytes > 0 ? Color.accentColor : Color.primary.opacity(0.12))
                                 .frame(height: max(3, 54 * Double(bytes) / Double(highest)))
-                            Text(date.formatted(.dateTime.month(.defaultDigits).day().locale(Locale(identifier: "ko_KR"))))
+                            Text(date.formatted(.dateTime.month(.defaultDigits).day().locale(AppLanguage.active.locale)))
                                 .font(.system(size: 13)).foregroundStyle(.secondary)
                         }.frame(maxWidth: .infinity).accessibilityElement(children: .combine)
                     }
                 }
-                Text("\(dayTime(model.history.started))부터 기록")
+                Text(tr("\(dayTime(model.history.started))부터 기록"))
                     .font(.system(size: 13)).foregroundStyle(.secondary)
             }.padding(13).background(MonitorSurface())
-            Text("스왑이 움직인 시점").font(.system(size: 19, weight: .bold))
-            Text("이때 함께 실행 중이던 작업과 프로그램을 표시해요.")
+            Text(tr("스왑이 움직인 시점")).font(.system(size: 19, weight: .bold))
+            Text(tr("이때 함께 실행 중이던 작업과 프로그램을 표시해요."))
                 .foregroundStyle(.secondary).font(.system(size: 14))
             if model.history.events.isEmpty {
-                Text("아직 1MB 이상 움직인 구간이 기록되지 않았어요.").foregroundStyle(.secondary)
+                Text(tr("아직 1MB 이상 움직인 구간이 기록되지 않았어요.")).foregroundStyle(.secondary)
             }
             LazyVStack(alignment: .leading, spacing: 0) {
               ForEach(model.history.events.reversed().prefix(100)) { event in
@@ -865,23 +866,23 @@ struct SwapScreen: View {
                             if event.written > 0 {
                                 Circle().fill(.orange).frame(width: 6, height: 6).accessibilityHidden(true)
                             }
-                            Text("쓰기 \(ram(event.written)) · 읽기 \(ram(event.read))")
+                            Text(tr("쓰기 \(ram(event.written)) · 읽기 \(ram(event.read))"))
                                 .foregroundStyle(event.written > 0 ? .primary : .secondary).monospacedDigit()
                         }
                     }
-                    Text("스왑 \(ram(event.before)) → \(ram(event.occupied)) · 압력 \(pressureText(event.pressure))")
+                    Text(tr("스왑 \(ram(event.before)) → \(ram(event.occupied)) · 압력 \(pressureText(event.pressure))"))
                         .foregroundStyle(.secondary)
                     if event.gap {
-                        Text("기록이 끊긴 구간 \(shortDuration(event.end.timeIntervalSince(event.start))) · 작업 정보 없음")
+                        Text(tr("기록이 끊긴 구간 \(shortDuration(event.end.timeIntervalSince(event.start))) · 작업 정보 없음"))
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(event.work, id: \.self) { Text($0).lineLimit(2) }
-                        if event.work.isEmpty { Text("함께 관찰된 AI 작업 없음").foregroundStyle(.secondary) }
+                        if event.work.isEmpty { Text(tr("함께 관찰된 AI 작업 없음")).foregroundStyle(.secondary) }
                         if let grew = event.growing, !grew.isEmpty {
-                            Text("램 증가 · " + grew.joined(separator: " · ")).lineLimit(2)
+                            Text(tr("램 증가 · ") + grew.joined(separator: " · ")).lineLimit(2)
                         }
                         if !event.processes.isEmpty {
-                            Text("램 사용량 상위 · " + event.processes.joined(separator: " · "))
+                            Text(tr("램 사용량 상위 · ") + event.processes.joined(separator: " · "))
                                 .foregroundStyle(.secondary).lineLimit(2)
                         }
                     }
@@ -905,10 +906,10 @@ struct SwapScreen: View {
 
 func pressureText(_ value: Int32?) -> String {
     switch value {
-    case 1: "정상"
-    case 2: "주의"
-    case 4: "위험"
-    default: "측정 중"
+    case 1: tr("정상")
+    case 2: tr("주의")
+    case 4: tr("위험")
+    default: tr("측정 중")
     }
 }
 
@@ -924,19 +925,19 @@ func pressureColor(_ value: Int32?) -> Color {
 private extension ModelUse {
     var displayLast: String {
         if dayOnly == true {
-            return last.formatted(.dateTime.month(.defaultDigits).day().locale(Locale(identifier: "ko_KR")))
+            return last.formatted(.dateTime.month(.defaultDigits).day().locale(AppLanguage.active.locale))
         }
         return dayTime(last)
     }
 }
 
 func dayTime(_ value: Date) -> String {
-    value.formatted(.dateTime.month(.defaultDigits).day().hour().minute().locale(Locale(identifier: "ko_KR")))
+    value.formatted(.dateTime.month(.defaultDigits).day().hour().minute().locale(AppLanguage.active.locale))
 }
 
 func shortDuration(_ seconds: Double) -> String {
     let duration = max(0, Int(seconds))
-    if duration < 60 { return "\(duration)초" }
-    if duration < 3600 { return "\(duration / 60)분" }
-    return "\(duration / 3600)시간 \((duration % 3600) / 60)분"
+    if duration < 60 { return tr("\(duration)초") }
+    if duration < 3600 { return tr("\(duration / 60)분") }
+    return tr("\(duration / 3600)시간 \((duration % 3600) / 60)분")
 }

@@ -120,13 +120,13 @@ actor ServerTools {
             while process.isRunning && Date() < deadline && !Task.isCancelled { try await Task.sleep(for: .milliseconds(100)) }
             if process.isRunning {
                 process.terminate()
-                throw ManagementError.message("서버 응답을 기다리는 시간이 길어졌어요. 서버 상태와 로그를 확인해 주세요.")
+                throw ManagementError.message(tr("서버 응답을 기다리는 시간이 길어졌어요. 서버 상태와 로그를 확인해 주세요."))
             }
             let input = try FileHandle(forReadingFrom: log)
             defer { try? input.close() }
             let data = try input.read(upToCount: outputLimit) ?? Data()
             let text = String(decoding: data, as: UTF8.self)
-            guard process.terminationStatus == 0 else { throw ManagementError.message("서버 요청을 완료하지 못했어요. " + String(text.suffix(700))) }
+            guard process.terminationStatus == 0 else { throw ManagementError.message(tr("서버 요청을 완료하지 못했어요. ") + String(text.suffix(700))) }
             return text
         }.value
     }
@@ -138,7 +138,7 @@ actor ServerTools {
                 let label = "local.splash.hermes-session-gate"
                 let file = ModelLibrary.home.appendingPathComponent("Library/LaunchAgents/" + label + ".plist")
                 guard FileManager.default.fileExists(atPath: file.path) else {
-                    throw ManagementError.message("Splash 연결 설정을 찾지 못했어요.")
+                    throw ManagementError.message(tr("Splash 연결 설정을 찾지 못했어요."))
                 }
                 let domain = "gui/\(getuid())"
                 let executable = URL(fileURLWithPath: "/bin/launchctl")
@@ -147,7 +147,7 @@ actor ServerTools {
                 let deadline = ContinuousClock.now + .seconds(8)
                 while await http.json(port, "/gate") == nil {
                     guard ContinuousClock.now < deadline else {
-                        throw ManagementError.message("Splash 연결 프로그램이 응답하지 않아요.")
+                        throw ManagementError.message(tr("Splash 연결 프로그램이 응답하지 않아요."))
                     }
                     try await Task.sleep(for: .milliseconds(250))
                 }
@@ -156,7 +156,7 @@ actor ServerTools {
         } else if provider == .lmStudio {
             _ = try await Self.run(Self.lms, ["server", "start", "--port", String(port), "--bind", "127.0.0.1"])
         } else if provider == .mlxStudio {
-            guard let app = provider.applicationURL else { throw ManagementError.message("MLX Studio 앱을 찾지 못했어요.") }
+            guard let app = provider.applicationURL else { throw ManagementError.message(tr("MLX Studio 앱을 찾지 못했어요.")) }
             _ = try await Self.run(URL(fileURLWithPath: "/usr/bin/open"), [app.path])
         } else {
             if await Task.detached(operation: { MacMemory.listeningProcess(port: port) != nil }).value { return }
@@ -171,7 +171,7 @@ actor ServerTools {
                 process.arguments = ["main.py", "--listen", "127.0.0.1", "--port", String(port), "--offline", "--reserve-vram", "6", "--disable-auto-launch"]
                 process.currentDirectoryURL = Self.comfyRoot
             } else {
-                guard let app = provider.applicationURL else { throw ManagementError.message("MLX-Serve 앱을 찾지 못했어요.") }
+                guard let app = provider.applicationURL else { throw ManagementError.message(tr("MLX-Serve 앱을 찾지 못했어요.")) }
                 process.executableURL = app.appendingPathComponent("Contents/MacOS/mlx-serve")
                 process.arguments = ["serve", "--host", "127.0.0.1", "--port", String(port)]
             }
@@ -219,7 +219,7 @@ actor ServerTools {
             if reading.activity != .offline && !reading.paused && !reading.transitioning { return }
             try await Task.sleep(for: .milliseconds(500))
         }
-        throw ManagementError.message("시작을 요청했어요. \(provider.title)에서 준비 상태를 확인해 주세요.")
+        throw ManagementError.message(tr("시작을 요청했어요. \(provider.title)에서 준비 상태를 확인해 주세요."))
     }
 
     func reset(_ provider: Provider) async throws {
@@ -228,12 +228,12 @@ actor ServerTools {
         let state = await providers.read(provider, port: port)
         guard provider.supportsEmptyReset, provider.port == port,
               ![.working, .queued, .loading, .stopping].contains(state.activity) else {
-            throw ManagementError.message("서버 상태가 바뀌었어요. 진행·대기 작업이 끝난 뒤 다시 시도해 주세요.")
+            throw ManagementError.message(tr("서버 상태가 바뀌었어요. 진행·대기 작업이 끝난 뒤 다시 시도해 주세요."))
         }
         switch provider {
         case .splash:
             guard let gate = await http.json(port, "/gate"), (gate["controls_version"] as? Int ?? 0) >= 6 else {
-                throw ManagementError.message("Splash 연결 프로그램에 응답이 없어요. 연결을 먼저 확인해 주세요.")
+                throw ManagementError.message(tr("Splash 연결 프로그램에 응답이 없어요. 연결을 먼저 확인해 주세요."))
             }
             _ = try await http.data(port, "/gate/splash/reset", body: ["video_port": Provider.comfy.port], timeout: 25)
         case .mlxServe:
@@ -252,7 +252,7 @@ actor ServerTools {
                       return ComfyProcess.find(port: port, pid: pid, entryPoint: entry)
                   }).value,
                   await providers.comfyIsIdle(port: port), engine.ownsPort, engine.requestStop(SIGINT) else {
-                throw ManagementError.message("이 Mac에서 관리하는 ComfyUI의 실행·대기 상태를 확인해 주세요.")
+                throw ManagementError.message(tr("이 Mac에서 관리하는 ComfyUI의 실행·대기 상태를 확인해 주세요."))
             }
             let deadline = ContinuousClock.now + .seconds(12)
             while engine.stillRunning && ContinuousClock.now < deadline {
@@ -266,14 +266,14 @@ actor ServerTools {
             throw LocalError.missing
         }
         guard provider.port == port, await providers.read(provider, port: port).activity == .empty else {
-            throw ManagementError.message("서버에 올라간 모델이 없는지 확인하지 못했어요.")
+            throw ManagementError.message(tr("서버에 올라간 모델이 없는지 확인하지 못했어요."))
         }
     }
 
     func stop(_ provider: Provider) async throws {
         let fresh = await Providers().read(provider)
         guard ![.working, .loading, .queued, .stopping].contains(fresh.activity) else {
-            throw ManagementError.message("진행·대기 작업이 있어요. 작업이 끝나면 서버를 끌 수 있어요.")
+            throw ManagementError.message(tr("진행·대기 작업이 있어요. 작업이 끝나면 서버를 끌 수 있어요."))
         }
         switch provider {
         case .splash:
@@ -285,20 +285,20 @@ actor ServerTools {
                 guard let pid = MacMemory.listeningProcess(port: provider.port) else { return nil }
                 return ComfyProcess.find(port: provider.port, pid: pid, entryPoint: entry)
             }).value, await Providers().comfyIsIdle(port: provider.port), target.requestStop(SIGINT) else {
-                throw ManagementError.message("현재 ComfyUI 프로세스와 작업 상태를 다시 확인해 주세요.")
+                throw ManagementError.message(tr("현재 ComfyUI 프로세스와 작업 상태를 다시 확인해 주세요."))
             }
         case .mlxServe, .mlxStudio:
             guard let target = await Task.detached(operation: { ServerProcess.find(provider, port: provider.port) }).value else {
-                throw ManagementError.message("이 앱이 확인한 로컬 서버 프로세스를 찾지 못했어요.")
+                throw ManagementError.message(tr("이 앱이 확인한 로컬 서버 프로세스를 찾지 못했어요."))
             }
-            guard target.stop() else { throw ManagementError.message("서버 상태가 바뀌어 종료를 멈췄어요.") }
+            guard target.stop() else { throw ManagementError.message(tr("서버 상태가 바뀌어 종료를 멈췄어요.")) }
         }
         for _ in 0..<20 {
             let state = await Providers().read(provider)
             if state.activity == .offline || state.paused { children.removeValue(forKey: provider); return }
             try await Task.sleep(for: .milliseconds(300))
         }
-        throw ManagementError.message("종료를 요청했어요. 서버가 다시 시작되었거나 아직 닫히지 않았어요.")
+        throw ManagementError.message(tr("종료를 요청했어요. 서버가 다시 시작되었거나 아직 닫히지 않았어요."))
     }
 
     static func lmModelKeys() async -> [String: String] {
@@ -312,10 +312,10 @@ actor ServerTools {
 
     func load(_ item: LocalModel) async throws {
         guard let asset = ModelFile.inspect(item.url), asset.compatibility(with: item.provider) == nil, !asset.isLoRA else {
-            throw ManagementError.message("이 항목은 기본 모델과 함께 사용하거나 서버 앱에서 선택해 주세요.")
+            throw ManagementError.message(tr("이 항목은 기본 모델과 함께 사용하거나 서버 앱에서 선택해 주세요."))
         }
         if item.provider == .comfy {
-            throw ManagementError.message("ComfyUI는 워크플로를 실행할 때 모델과 로라를 올려요. 파일 연결 뒤 ComfyUI에서 해당 워크플로를 실행해 주세요.")
+            throw ManagementError.message(tr("ComfyUI는 워크플로를 실행할 때 모델과 로라를 올려요. 파일 연결 뒤 ComfyUI에서 해당 워크플로를 실행해 주세요."))
         }
         if item.provider == .splash {
             _ = try await http.data(item.provider.port, "/gate/splash/load", body: ["path": item.url.path, "video_port": Provider.comfy.port], timeout: 180)
@@ -326,9 +326,9 @@ actor ServerTools {
             guard let data = listing.data(using: .utf8), let rows = try JSONSerialization.jsonObject(with: data) as? [[String: Any]],
                   let found = rows.first(where: { ($0["path"] as? String) == item.key || ($0["path"] as? String)?.hasSuffix("/" + item.title) == true }),
                   let key = found["modelKey"] as? String ?? found["indexedModelIdentifier"] as? String else {
-                throw ManagementError.message("LM Studio에서 이 모델을 아직 찾지 못했어요. 앱의 모델 목록을 새로 고침해 주세요.")
+                throw ManagementError.message(tr("LM Studio에서 이 모델을 아직 찾지 못했어요. 앱의 모델 목록을 새로 고침해 주세요."))
             }
             _ = try await Self.run(Self.lms, ["load", key, "--yes"], timeout: 180)
-        } else { throw ManagementError.message("이 서버의 앱에서 모델을 선택해 주세요.") }
+        } else { throw ManagementError.message(tr("이 서버의 앱에서 모델을 선택해 주세요.")) }
     }
 }

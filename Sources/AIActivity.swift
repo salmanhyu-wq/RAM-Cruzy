@@ -4,6 +4,7 @@ import SwiftUI
 enum AIWorkKind: String, CaseIterable, Identifiable {
     case chat = "대화", image = "그림", video = "영상", audio = "소리", other = "기타"
     var id: Self { self }
+    var title: String { AppLanguage.active.string(rawValue) }
     var symbol: String {
         switch self {
         case .chat: "bubble.left.and.bubble.right.fill"
@@ -15,6 +16,7 @@ enum AIWorkKind: String, CaseIterable, Identifiable {
     }
     static func classify(_ row: WorkRow, provider: Provider) -> Self {
         if provider == .splash { return .chat }
+        if let workKind = row.workKind { return workKind }
         let description = provider == .comfy ? String(row.title.prefix(6)) : row.detail
         if description.contains("영상") { return .video }
         if description.contains("이미지") { return .image }
@@ -146,11 +148,11 @@ struct AIActivityHistory {
         return AIWorkKind.allCases.filter { [.chat, .image, .video].contains($0) || kinds.contains($0) }
     }
     private var detail: String {
-        guard let sample = selected else { return latest == nil ? "AI 서버의 첫 기록을 기다려요" : "이 구간은 기록을 모으는 중이에요" }
+        guard let sample = selected else { return latest == nil ? tr("AI 서버의 첫 기록을 기다려요") : tr("이 구간은 기록을 모으는 중이에요") }
         if let work = sample.work.first {
-            return work.title + (sample.work.count > 1 ? " 외 \(sample.work.count - 1)개" : "")
+            return work.title + (sample.work.count > 1 ? tr(" 외 \(sample.work.count - 1)개") : "")
         }
-        return sample.servers.contains { $0.activity != .offline } ? "생성 작업이 쉬고 있어요" : "연결된 AI 서버가 없어요"
+        return sample.servers.contains { $0.activity != .offline } ? tr("생성 작업이 쉬고 있어요") : tr("연결된 AI 서버가 없어요")
     }
     private var inspection: String {
         guard let sample = selected else { return detail }
@@ -165,16 +167,16 @@ struct AIActivityHistory {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .center, spacing: 7) {
                 titleLayout {
-                    Text("로컬 AI 램").font(.system(size: compact ? 12 : 13, weight: .semibold))
+                    Text(tr("로컬 AI 램")).font(.system(size: compact ? 12 : 13, weight: .semibold))
                         .foregroundStyle(MonitorPalette.text)
                     Text(ram(selected?.bytes)).font(.system(size: 22, weight: .semibold)).monospacedDigit()
                         .foregroundStyle(MonitorPalette.accent)
                 }
                 Spacer(minLength: 0)
-                Text(cursor.fraction == nil ? "최근 5분" : selected?.date.formatted(date: .omitted, time: .standard) ?? "기록 없음")
+                Text(cursor.fraction == nil ? tr("최근 5분") : selected?.date.formatted(.dateTime.hour().minute().second().locale(AppLanguage.active.locale)) ?? tr("기록 없음"))
                     .font(.system(size: 11)).foregroundStyle(MonitorPalette.secondary).monospacedDigit()
             }
-            .help("연결된 AI 서버가 보고한 램과 확인된 서버 프로세스의 램을 합쳐요. 마우스를 올리면 서버별 수치와 작업을 볼 수 있어요.")
+            .help(tr("연결된 AI 서버가 보고한 램과 확인된 서버 프로세스의 램을 합쳐요. 마우스를 올리면 서버별 수치와 작업을 볼 수 있어요."))
             GeometryReader { geometry in
                 let width = max(geometry.size.width - gutter - 8, 1)
                 ZStack(alignment: .topLeading) {
@@ -191,15 +193,15 @@ struct AIActivityHistory {
                         .frame(width: gutter - 4, height: plotHeight, alignment: .leading)
                         Color.clear.frame(height: graphHeight - plotHeight)
                         ForEach(lanes) { kind in
-                            Text(kind.rawValue)
+                            Text(kind.title)
                                 .font(.system(size: 11)).foregroundStyle(MonitorPalette.secondary)
                                 .frame(height: laneHeight)
                         }
                     }.allowsHitTesting(false)
                     HStack {
-                        Text("5분 전")
+                        Text(tr("5분 전"))
                         Spacer()
-                        Text("지금")
+                        Text(tr("지금"))
                     }
                     .font(.system(size: 11)).foregroundStyle(MonitorPalette.secondary)
                     .padding(.leading, gutter).padding(.trailing, 8).padding(.top, plotHeight)
@@ -231,7 +233,7 @@ struct AIActivityHistory {
             .help(inspection)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("최근 5분 로컬 AI 램과 대화·그림·영상 작업 기록")
+        .accessibilityLabel(tr("최근 5분 로컬 AI 램과 대화·그림·영상 작업 기록"))
         .accessibilityValue(ram(selected?.bytes) + ". " + detail)
     }
 

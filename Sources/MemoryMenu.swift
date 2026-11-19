@@ -4,8 +4,8 @@ import Combine
 import SwiftUI
 
 enum AppIdentity {
-    static let name = "로컬 램 크루지_EX"
-    static let quickTitle = name + " · 빠른 관리"
+    static let name = tr("로컬 램 크루지_EX")
+    static let quickTitle = name + tr(" · 빠른 관리")
     static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.5.0"
 }
 
@@ -105,7 +105,7 @@ enum AppIdentity {
         guard force || pressure != displayedPressure || hasAlert != wasAlerting else { return }
         displayedPressure = pressure
         let label = AppIdentity.name + " · " + memoryStatusText(pressure) +
-            (hasAlert ? " · 확인할 서버 있음" : "")
+            (hasAlert ? tr(" · 확인할 서버 있음") : "")
         button.image = MenuPressureIcon.image(pressure, alert: alertVisible)
         button.toolTip = label
         button.setAccessibilityLabel(label)
@@ -136,18 +136,18 @@ enum AppIdentity {
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
         let menu = NSMenu()
         menu.autoenablesItems = false
-        menu.addItem(item("빠른 관리 열기", action: #selector(showQuickWindow)))
-        let release = item("쉬는 AI 메모리 비우기", action: #selector(releaseFromDock))
+        menu.addItem(item(tr("빠른 관리 열기"), action: #selector(showQuickWindow)))
+        let release = item(tr("쉬는 AI 메모리 비우기"), action: #selector(releaseFromDock))
         release.isEnabled = !model.bulkTargets.isEmpty && !model.runningAction
         menu.addItem(release)
-        let boost = item(model.boostRunning ? "GPU 상한 원복" : "램 쥐어짜기", action: #selector(showBoost))
+        let boost = item(model.boostRunning ? tr("GPU 상한 원복") : tr("램 쥐어짜기"), action: #selector(showBoost))
         boost.isEnabled = model.boostRunning || !model.runningAction
         menu.addItem(boost)
-        let automatic = item("자동 비우기", action: #selector(toggleAutomaticRecovery))
+        let automatic = item(tr("자동 비우기"), action: #selector(toggleAutomaticRecovery))
         automatic.state = model.autoRecoveryEnabled ? .on : .off
         menu.addItem(automatic)
-        menu.addItem(item("관제탑 열기", action: #selector(showHub)))
-        menu.addItem(item("자세히 보기", action: #selector(showDetails)))
+        menu.addItem(item(tr("관제탑 열기"), action: #selector(showHub)))
+        menu.addItem(item(tr("자세히 보기"), action: #selector(showDetails)))
         return menu
     }
 
@@ -215,21 +215,22 @@ enum AppIdentity {
         let main = NSMenu()
         let app = NSMenuItem()
         let commands = NSMenu(title: AppIdentity.name)
-        commands.addItem(item(AppIdentity.name + " 정보", action: #selector(showAbout)))
+        commands.addItem(item(tr("\(AppIdentity.name) 정보"), action: #selector(showAbout)))
         commands.addItem(.separator())
-        commands.addItem(item("빠른 관리 열기", action: #selector(showQuickWindow)))
-        commands.addItem(item("관제탑 열기", action: #selector(showHub)))
-        commands.addItem(item("자세히 보기", action: #selector(showDetails)))
-        let settings = item("설정…", action: #selector(showSettings))
+        commands.addItem(item(tr("빠른 관리 열기"), action: #selector(showQuickWindow)))
+        commands.addItem(item(tr("관제탑 열기"), action: #selector(showHub)))
+        commands.addItem(item(tr("자세히 보기"), action: #selector(showDetails)))
+        let settings = item(tr("설정…"), action: #selector(showSettings))
         settings.keyEquivalent = ","
         commands.addItem(settings)
         commands.addItem(.separator())
-        commands.addItem(withTitle: AppIdentity.name + " 닫기", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        commands.addItem(item("완전히 종료", action: #selector(quitCompletely)))
+        commands.addItem(withTitle: tr("\(AppIdentity.name) 닫기"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        commands.addItem(item(tr("완전히 종료"), action: #selector(quitCompletely)))
+        app.title = AppIdentity.name
         app.submenu = commands
         main.addItem(app)
-        let windows = NSMenu(title: "창")
-        windows.addItem(withTitle: "창 닫기", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        let windows = NSMenu(title: tr("창"))
+        windows.addItem(withTitle: tr("창 닫기"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         let windowMenu = NSMenuItem()
         windowMenu.submenu = windows
         main.addItem(windowMenu)

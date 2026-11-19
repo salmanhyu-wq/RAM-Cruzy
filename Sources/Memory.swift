@@ -169,7 +169,7 @@ enum MacMemory {
             }
             let executable = length > 0
                 ? URL(fileURLWithPath: String(decoding: path.prefix(Int(length)).prefix(while: { $0 != 0 }), as: UTF8.self)).lastPathComponent
-                : "프로세스 \(pid)"
+                : tr("프로세스 \(pid)")
             return ProcessMemory(id: pid, title: executable, bytes: usage.ri_phys_footprint, appID: nil)
         }.sorted { $0.bytes > $1.bytes }
     }

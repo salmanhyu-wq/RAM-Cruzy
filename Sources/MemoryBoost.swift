@@ -36,13 +36,13 @@ struct GPUBoostTracking {
                 missingSamples = 0
             } else if sawResident {
                 missingSamples += 1
-                if missingSamples >= 2 { return "선택한 모델이 램에서 내려갔어요." }
+                if missingSamples >= 2 { return tr("선택한 모델이 램에서 내려갔어요.") }
             }
         } else {
             missingSamples = 0
-            if now - lastConfirmed >= 45 { return "서버에서 모델 상태를 확인할 수 없어요." }
+            if now - lastConfirmed >= 45 { return tr("서버에서 모델 상태를 확인할 수 없어요.") }
         }
-        if !sawResident && now - started >= 300 { return "5분 동안 모델이 램에 올라오지 않았어요." }
+        if !sawResident && now - started >= 300 { return tr("5분 동안 모델이 램에 올라오지 않았어요.") }
         return nil
     }
 }
@@ -69,12 +69,12 @@ struct GPUBoostBudget {
     static func enabledLimit(reserveGiB: Int) throws -> Int {
         guard #available(macOS 15, *), let previous = currentLimit(),
               let device = MTLCreateSystemDefaultDevice() else {
-            throw ManagementError.message("이 Mac에서 GPU 메모리 상한을 바꿀 수 있는지 확인하지 못했어요.")
+            throw ManagementError.message(tr("이 Mac에서 GPU 메모리 상한을 바꿀 수 있는지 확인하지 못했어요."))
         }
         let target = targetLimit(reserveGiB: reserveGiB)
         let live = previous == 0 ? Int(device.recommendedMaxWorkingSetSize / mib) : previous
         guard reserveChoices.contains(reserveGiB), target > live, target > 0 else {
-            throw ManagementError.message("지금 GPU 메모리 상한이 이미 이 값 이상이에요. 설정을 바꾸지 않았어요.")
+            throw ManagementError.message(tr("지금 GPU 메모리 상한이 이미 이 값 이상이에요. 설정을 바꾸지 않았어요."))
         }
         return target
     }
@@ -210,7 +210,7 @@ struct IdleProgram: Identifiable {
     func prepare(limit: Int) async throws {
         guard let helper = Bundle.main.url(forAuxiliaryExecutable: "GPUWiredLimit"),
               FileManager.default.isExecutableFile(atPath: helper.path) else {
-            throw ManagementError.message("GPU 메모리 설정 도구를 찾을 수 없어요.")
+            throw ManagementError.message(tr("GPU 메모리 설정 도구를 찾을 수 없어요."))
         }
         let socketPath = try openListener()
         let process = Process()
@@ -248,7 +248,7 @@ struct IdleProgram: Identifiable {
             try await Task.sleep(for: .milliseconds(100))
         }
         if process.isRunning { process.terminate() }
-        throw ManagementError.message("관리자 권한을 받지 못했어요. 다시 시도할 때 macOS 승인 창을 확인해 주세요.")
+        throw ManagementError.message(tr("관리자 권한을 받지 못했어요. 다시 시도할 때 macOS 승인 창을 확인해 주세요."))
     }
 
     func activate() async throws {
@@ -263,13 +263,13 @@ struct IdleProgram: Identifiable {
     func keepAlive() -> Bool { connected && sendByte(UInt8(ascii: "K")) }
 
     func restore() async -> String {
-        guard peer >= 0 else { return "GPU 메모리 상한 상태를 확인해 주세요." }
+        guard peer >= 0 else { return tr("GPU 메모리 상한 상태를 확인해 주세요.") }
         connected = false
         shutdown(peer, SHUT_WR)
         switch await waitForStatus(seconds: 70) {
-        case UInt8(ascii: "R"): return "GPU 메모리 상한을 실행 전 값으로 돌렸어요."
-        case UInt8(ascii: "X"): return "다른 곳에서 바꾼 GPU 메모리 상한을 그대로 뒀어요."
-        default: return "GPU 메모리 상한을 원복했는지 확인하지 못했어요."
+        case UInt8(ascii: "R"): return tr("GPU 메모리 상한을 실행 전 값으로 돌렸어요.")
+        case UInt8(ascii: "X"): return tr("다른 곳에서 바꾼 GPU 메모리 상한을 그대로 뒀어요.")
+        default: return tr("GPU 메모리 상한을 원복했는지 확인하지 못했어요.")
         }
     }
 
@@ -321,10 +321,10 @@ struct IdleProgram: Identifiable {
 
     private static func failure(_ status: UInt8?) -> ManagementError {
         switch status {
-        case UInt8(ascii: "B"): return .message("다른 램 쥐어짜기가 이미 켜져 있어요.")
-        case UInt8(ascii: "N"): return .message("지금 GPU 메모리 상한이 이미 이 값 이상이에요.")
-        case UInt8(ascii: "F"): return .message("변경을 마치지 못했고 GPU 메모리 상한의 원복도 확인하지 못했어요.")
-        default: return .message("GPU 메모리 상한을 적용할 수 없어요.")
+        case UInt8(ascii: "B"): return .message(tr("다른 램 쥐어짜기가 이미 켜져 있어요."))
+        case UInt8(ascii: "N"): return .message(tr("지금 GPU 메모리 상한이 이미 이 값 이상이에요."))
+        case UInt8(ascii: "F"): return .message(tr("변경을 마치지 못했고 GPU 메모리 상한의 원복도 확인하지 못했어요."))
+        default: return .message(tr("GPU 메모리 상한을 적용할 수 없어요."))
         }
     }
 }

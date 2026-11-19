@@ -4,6 +4,7 @@ import Foundation
 enum ModelPurpose: String, CaseIterable, Identifiable, Codable {
     case chat = "대화", image = "이미지", video = "영상", music = "음악", lora = "로라"
     case voice = "음성", embedding = "임베딩", support = "보조 모델", other = "기타"
+    var title: String { AppLanguage.active.string(rawValue) }
     var id: Self { self }
 
     static func guess(_ name: String, folder: String = "", metadata: String = "", default fallback: Self = .other) -> Self {

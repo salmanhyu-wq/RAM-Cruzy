@@ -9,7 +9,7 @@ clang -O2 -Wall -Wextra -Werror -arch arm64 -mmacosx-version-min=14.0 \
     Sources/GPUWiredLimit.c -o "$app/Contents/MacOS/GPUWiredLimit"
 /usr/bin/codesign --force --sign - "$app/Contents/MacOS/GPUWiredLimit"
 swiftc -O -swift-version 5 -module-cache-path "$out/ModuleCache" \
-    Sources/Memory.swift Sources/MemoryBoost.swift Sources/MemoryBoostView.swift Sources/Providers.swift Sources/Library.swift Sources/History.swift \
+    Sources/AppLanguage.swift Sources/Memory.swift Sources/MemoryBoost.swift Sources/MemoryBoostView.swift Sources/Providers.swift Sources/Library.swift Sources/History.swift \
     Sources/ModelFiles.swift Sources/ServerTools.swift Sources/ManagementViews.swift Sources/AIActivity.swift Sources/Dashboard.swift Sources/Views.swift Sources/MemoryMenu.swift -lsqlite3 \
     -target arm64-apple-macos14.0 -o "$app/Contents/MacOS/AIRAMManager"
 icons="$out/AppIcon.iconset"
@@ -28,6 +28,10 @@ fi
 cp "$out/AppIcon.icns" "$app/Contents/Resources/AppIcon.icns"
 cp "$out/MenuChip.png" "$app/Contents/Resources/MenuChip.png"
 cp Resources/MyMusicGacha.png "$app/Contents/Resources/MyMusicGacha.png"
+for language in en ko; do
+    mkdir -p "$app/Contents/Resources/$language.lproj"
+    cp Resources/"$language.lproj/"*.strings "$app/Contents/Resources/$language.lproj/"
+done
 cp Resources/Info.plist "$app/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :AIRAMSourceFolder string $project" "$app/Contents/Info.plist"
 /usr/bin/codesign --force --sign - "$app"

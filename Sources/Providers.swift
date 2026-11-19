@@ -60,6 +60,7 @@ struct WorkRow: Identifiable {
     var conversationTitle: String? = nil
     var sessionIdentifier: String? = nil
     var attributionNote: String? = nil
+    var workKind: AIWorkKind? = nil
 }
 
 struct GPUModelReading {
@@ -89,11 +90,11 @@ enum LocalError: LocalizedError {
     case status(Int), invalid, changed, missing
     var errorDescription: String? {
         switch self {
-        case .status(401), .status(403): "서버 접근 권한을 확인해 주세요."
-        case .status(404), .missing: "서버에서 이 기능을 제공하지 않거나 작업이 이미 끝났어요."
-        case .status(409), .changed: "작업이나 연결 상태가 달라졌어요. 새 상태를 확인해 주세요."
-        case .status(let code): "서버가 요청을 완료하지 못했어요. (\(code))"
-        case .invalid: "서버 응답을 확인할 수 없어요."
+        case .status(401), .status(403): tr("서버 접근 권한을 확인해 주세요.")
+        case .status(404), .missing: tr("서버에서 이 기능을 제공하지 않거나 작업이 이미 끝났어요.")
+        case .status(409), .changed: tr("작업이나 연결 상태가 달라졌어요. 새 상태를 확인해 주세요.")
+        case .status(let code): tr("서버가 요청을 완료하지 못했어요. (\(code))")
+        case .invalid: tr("서버 응답을 확인할 수 없어요.")
         }
     }
 }
@@ -210,12 +211,12 @@ enum HermesConversation {
     }
 
     static func profileName(_ slug: String, home: URL? = nil) -> String {
-        guard valid(slug) else { return "이름 미확인" }
+        guard valid(slug) else { return tr("이름 미확인") }
         let home = home ?? stateHome
         let file = (slug == "default" ? home : home.appendingPathComponent("profiles").appendingPathComponent(slug))
             .appendingPathComponent("profile.yaml")
         guard let data = try? Data(contentsOf: file), data.count <= 65_536,
-              let manifest = String(data: data, encoding: .utf8) else { return slug == "default" ? "기본 대화" : slug }
+              let manifest = String(data: data, encoding: .utf8) else { return slug == "default" ? tr("기본 대화") : slug }
         let lines = manifest.split(separator: "\n")
         let line = lines.first { $0.hasPrefix("    title: ") } ?? lines.first { $0.hasPrefix("display_name: ") }
             ?? lines.first { $0.hasPrefix("description: ") }
@@ -238,7 +239,7 @@ enum HermesConversation {
             CharacterSet(charactersIn: "\u{200B}\u{200E}\u{200F}\u{202A}\u{202B}\u{202C}\u{202D}\u{202E}\u{2066}\u{2067}\u{2068}\u{2069}"))
         let safe = String(clean.unicodeScalars.filter { !blocked.contains($0) })
         guard !safe.isEmpty else { return nil }
-        if safe == "Bot Chat" { return "봇 대화" }
+        if safe == "Bot Chat" { return tr("봇 대화") }
         return safe.count > 42 ? String(safe.prefix(42)) + "…" : safe
     }
 }
@@ -256,7 +257,7 @@ struct Providers: Sendable {
                 for index in readings[splash].models.indices {
                     if case .sleepSplash = readings[splash].models[index].control {
                         readings[splash].models[index].control = nil
-                        readings[splash].models[index].detail = "이미지·영상 작업이 끝나면 캐시를 내릴 수 있어요."
+                        readings[splash].models[index].detail = tr("이미지·영상 작업이 끝나면 캐시를 내릴 수 있어요.")
                     }
                 }
             }
@@ -266,7 +267,7 @@ struct Providers: Sendable {
 
     func read(_ provider: Provider, port: Int? = nil) async -> ServerReading {
         let port = port ?? provider.port
-        let offline = ServerReading(id: provider, detail: "이 Mac의 포트 \(port)", activity: .offline)
+        let offline = ServerReading(id: provider, detail: tr("이 Mac의 포트 \(port)"), activity: .offline)
         switch provider {
         case .splash: return await splash(port) ?? offline
         case .mlxServe: return await mlxServe(port) ?? offline
@@ -281,16 +282,16 @@ struct Providers: Sendable {
         async let gateData = http.json(port, "/gate")
         let gate = await gateData ?? [:]
         let transitioning = gate["splash_transition"] as? Bool == true
-        let problem = gate.text("splash_problem").map { _ in "모델 전환에 실패했어요." }
+        let problem = gate.text("splash_problem").map { _ in tr("모델 전환에 실패했어요.") }
         if transitioning {
-            return ServerReading(id: .splash, detail: "서버를 전환하고 있어요.", activity: .loading, transitioning: true)
+            return ServerReading(id: .splash, detail: tr("서버를 전환하고 있어요."), activity: .loading, transitioning: true)
         }
         guard let status = await statusData else {
             guard gate["cache_sleep"] as? Bool == true else { return nil }
-            return ServerReading(id: .splash, detail: "모델 서버에 연결할 수 없어요.", activity: .offline, problem: problem, upstreamUnavailable: true)
+            return ServerReading(id: .splash, detail: tr("모델 서버에 연결할 수 없어요."), activity: .offline, problem: problem, upstreamUnavailable: true)
         }
         if status["empty"] as? Bool == true {
-            return ServerReading(id: .splash, detail: "켜짐 · 올라간 모델 없음", activity: .empty, bytes: 0, gpuModels: [])
+            return ServerReading(id: .splash, detail: tr("켜짐 · 올라간 모델 없음"), activity: .empty, bytes: 0, gpuModels: [])
         }
         guard let model = status.object("instance").text("model"),
               let instance = status.object("instance").text("id") else { return nil }
@@ -321,14 +322,14 @@ struct Providers: Sendable {
         let hasCache = (kv.int("pages_cache") ?? 0) > 0
         let sleeping = status["sleeping"] as? Bool == true
         if status["paused"] as? Bool == true {
-            note = "서버를 껐어요. 서버 관리에서 다시 켤 수 있어요."
+            note = tr("서버를 껐어요. 서버 관리에서 다시 켤 수 있어요.")
         } else if sleeping {
-            note = "캐시를 비웠어요. 다음 요청에서 다시 준비해요."
+            note = tr("캐시를 비웠어요. 다음 요청에서 다시 준비해요.")
         } else if activity == .unloaded {
-            note = hasCache ? "모델은 내려갔어요. 대화 캐시가 램에 남아 있어요." :
-                "모델은 내려갔어요. 서버는 다음 요청을 기다려요."
+            note = hasCache ? tr("모델은 내려갔어요. 대화 캐시가 램에 남아 있어요.") :
+                tr("모델은 내려갔어요. 서버는 다음 요청을 기다려요.")
         } else {
-            note = idleTime.map { "유휴 \($0)초 후 자동으로 내려감" } ?? "공유 모델"
+            note = idleTime.map { tr("유휴 \($0)초 후 자동으로 내려감") } ?? tr("공유 모델")
         }
         let canSleep = activity == .unloaded && hasCache && active == 0 && queued == 0 &&
             gate["cache_sleep"] as? Bool == true && status.object("transport")["status_stale"] as? Bool == false
@@ -336,12 +337,12 @@ struct Providers: Sendable {
             control: canSleep ? .sleepSplash(instance, port) : activity == .idle ? .release(.splash, instance, port) : nil,
             bulk: activity == .idle)
         let slots = gate.object("limit")
-        let detail = active.flatMap { a in queued.map { "슬롯 \(a)/\(slots.values.compactMap { $0 as? Int }.reduce(0,+)) 사용 · \($0)개 대기" } }
-            ?? "엔진 상태"
+        let detail = active.flatMap { a in queued.map { tr("슬롯 \(a)/\(slots.values.compactMap { $0 as? Int }.reduce(0,+)) 사용 · \($0)개 대기") } }
+            ?? tr("엔진 상태")
         var jobs: [WorkRow] = []
         let uploaded = gate.objects("jobs")
         for role in ["user", "bot"] {
-            let label = role == "user" ? "개인" : "봇"
+            let label = role == "user" ? tr("개인") : tr("봇")
             let roleJobs = uploaded.filter { $0.text("role") == role }
             if gate["management"] as? Int == 1, let count = slots.int(role) {
                 for slot in 1...max(1, min(count, 20)) {
@@ -351,29 +352,29 @@ struct Providers: Sendable {
                         jobs.append(WorkRow(id: "\(role)-\(slot)", title: "\(label) \(slot)", activity: .empty))
                     }
                 }
-                jobs += roleJobs.filter { $0.int("slot") == nil }.map { splashJob($0, label: "\(label) 대기", port: port) }
+                jobs += roleJobs.filter { $0.int("slot") == nil }.map { splashJob($0, label: tr("\(label) 대기"), port: port) }
             } else if let count = slots.int(role) {
                 let a = gate.object("active").int(role) ?? 0
                 let q = gate.object("waiting").int(role) ?? 0
-                jobs.append(WorkRow(id: role, title: "\(label) \(a)/\(count)칸", detail: "대기 \(q)개 · 요청별 연결 필요",
+                jobs.append(WorkRow(id: role, title: tr("\(label) \(a)/\(count)칸"), detail: tr("대기 \(q)개 · 요청별 연결 필요"),
                     activity: a > 0 ? .working : q > 0 ? .queued : .empty))
             }
         }
         if !native.isEmpty && (uploaded.isEmpty || native.count > uploaded.filter({ $0.int("slot") != nil }).count) {
-            jobs.append(WorkRow(id: "splash-engine", title: "엔진 작업 \(native.count)개", detail: "사용 중인 대화 캐시", activity: .working, bytes: kvBytes))
+            jobs.append(WorkRow(id: "splash-engine", title: tr("엔진 작업 \(native.count)개"), detail: tr("사용 중인 대화 캐시"), activity: .working, bytes: kvBytes))
         }
         let recent = gate.objects("recent_jobs").filter {
             $0.text("model")?.replacingOccurrences(of: "local/", with: "") == model.replacingOccurrences(of: "local/", with: "")
         }.prefix(3).map { splashJob($0, label: "", port: port) }
         var visibleModel = modelRow
         if !jobs.contains(where: { $0.activity != .empty }), let last = recent.first {
-            visibleModel.detail += " · 마지막 사용: " + last.title
+            visibleModel.detail += tr(" · 마지막 사용: ") + last.title
             if let title = last.conversationTitle { visibleModel.detail += " · " + title }
         }
         let resident = weights["released"] as? Bool
         let stale = status.object("transport")["status_stale"] as? Bool == true
         let gpuModels = stale ? nil : resident.map { [GPUModelReading(id: model, title: model, resident: !$0)] }
-        return ServerReading(id: .splash, detail: status["paused"] as? Bool == true ? "서버 꺼짐 · 수동으로 다시 켜기" : sleeping ? "캐시 비움 · 다음 요청에서 준비" : detail,
+        return ServerReading(id: .splash, detail: status["paused"] as? Bool == true ? tr("서버 꺼짐 · 수동으로 다시 켜기") : sleeping ? tr("캐시 비움 · 다음 요청에서 준비") : detail,
                              activity: activity, bytes: bytes, models: [visibleModel], jobs: jobs, recentJobs: Array(recent),
                              paused: status["paused"] as? Bool == true, gpuModels: gpuModels, problem: problem)
     }
@@ -384,19 +385,19 @@ struct Providers: Sendable {
         let profile = item.text("profile").flatMap { $0.isEmpty ? nil : $0 }
         let scope = item.text("scope") ?? "profiles"
         let linked = profile != nil && session != nil
-        let client = item.text("client").flatMap { $0.isEmpty || $0 == "로컬 요청" ? nil : $0 } ?? (linked ? "Hermes" : "요청한 앱 미확인")
+        let client = item.text("client").flatMap { $0.isEmpty || $0 == "로컬 요청" ? nil : $0 } ?? (linked ? "Hermes" : tr("요청한 앱 미확인"))
         let owner = profile.map { HermesConversation.profileName($0) }
-        let seconds = item.int("seconds").map { "\($0)초" }
+        let seconds = item.int("seconds").map { tr("\($0)초") }
         let recent = item.text("state") == "finished"
         let state: Activity = recent ? .idle : item.text("state") == "stopping" ? .stopping :
             item.int("slot") == nil ? .queued : .working
         var note: String? = nil
-        if !linked { note = "앱·대화방 연결 정보가 없어요. 중단 전에 확인해 주세요." }
-        else if item.text("attribution") == "message_match" { note = "최근 대화 기록과 일치해 연결했어요." }
-        let origin = [client, owner, item.text("source") == "cron" ? "자동 작업" : nil, recent ? nil : label]
+        if !linked { note = tr("앱·대화방 연결 정보가 없어요. 중단 전에 확인해 주세요.") }
+        else if item.text("attribution") == "message_match" { note = tr("최근 대화 기록과 일치해 연결했어요.") }
+        let origin = [client, owner, item.text("source") == "cron" ? tr("자동 작업") : nil, recent ? nil : label]
             .compactMap { $0 }.joined(separator: " · ")
         return WorkRow(id: id, title: origin,
-            detail: [item.text("model"), session.map { "세션 \(String($0.prefix(24)))" }, seconds].compactMap { $0 }.joined(separator: "  ·  "),
+            detail: [item.text("model"), session.map { tr("세션 \(String($0.prefix(24)))") }, seconds].compactMap { $0 }.joined(separator: "  ·  "),
             activity: state, control: recent || state == .stopping ? nil : .cancelSplash(id, port),
             observedModels: [item.text("model")].compactMap { $0 },
             conversationTitle: HermesConversation.preview(profile: profile, session: session, scope: scope),
@@ -421,19 +422,21 @@ struct Providers: Sendable {
             guard let id = row.text("model") ?? row.text("name") else { return nil }
             let bytes = row.int("size_vram").flatMap { UInt64(exactly: $0) }.flatMap { $0 > 0 ? $0 : nil }
             let capabilities = catalog.first { $0.text("id") == id }?["capabilities"] as? [String] ?? []
-            let labels = ["chat": "대화", "image": "이미지", "video": "영상", "music": "음악", "audio": "음성", "3d": "3D"]
+            let labels = ["chat": tr("대화"), "image": tr("이미지"), "video": tr("영상"), "music": tr("음악"), "audio": tr("음성"), "3d": "3D"]
+            let kinds: [(String, AIWorkKind)] = [("video", .video), ("image", .image), ("music", .audio), ("audio", .audio), ("chat", .chat)]
+            let kind = kinds.first { capabilities.contains($0.0) }?.1
             let types = capabilities.compactMap { labels[$0] }.joined(separator: " · ")
-            let detail = types.isEmpty ? "서버에 올라온 모델" : types + " 모델"
+            let detail = types.isEmpty ? tr("서버에 올라온 모델") : types + tr(" 모델")
             let modelState: Activity = modelsShareActivity(loaded.objects("models").count, state: state)
             return WorkRow(id: id, title: id, detail: detail, activity: modelState, bytes: bytes,
-                control: [.idle, .unknown].contains(state) ? .release(.mlxServe, id, port) : nil, bulk: state == .idle)
+                control: [.idle, .unknown].contains(state) ? .release(.mlxServe, id, port) : nil, bulk: state == .idle, workKind: kind)
         }
         var jobs: [WorkRow] = []
         if let active, active > 0 {
-            jobs.append(WorkRow(id: "mlx-run", title: "MLX-Serve 작업 \(active)개", detail: models.count == 1 ? models[0].title : "서버가 제공하는 전체 작업 수", activity: .working))
+            jobs.append(WorkRow(id: "mlx-run", title: tr("MLX-Serve 작업 \(active)개"), detail: models.count == 1 ? models[0].title : tr("서버가 제공하는 전체 작업 수"), activity: .working))
         }
         if let queued, queued > 0 {
-            jobs.append(WorkRow(id: "mlx-queue", title: "MLX-Serve 대기 \(queued)개", activity: .queued))
+            jobs.append(WorkRow(id: "mlx-queue", title: tr("MLX-Serve 대기 \(queued)개"), activity: .queued))
         }
         let loadedIDs = Set(models.map(\.id))
         let availableIDs = Set(catalog.compactMap { row -> String? in
@@ -443,7 +446,7 @@ struct Providers: Sendable {
         let gpuModels = loadedIDs.union(availableIDs).sorted().map {
             GPUModelReading(id: $0, title: $0, resident: loadedIDs.contains($0))
         }
-        return ServerReading(id: .mlxServe, detail: "모델 \(models.count)개 · 포트 \(port)",
+        return ServerReading(id: .mlxServe, detail: tr("모델 \(models.count)개 · 포트 \(port)"),
             activity: models.isEmpty && jobs.isEmpty && state == .idle ? .empty : state, bytes: total, models: models, jobs: jobs,
             gpuModels: loaded.objects("models").count == models.count ? gpuModels : nil)
     }
@@ -459,7 +462,7 @@ struct Providers: Sendable {
             model.objects("loaded_instances").compactMap { instance in
                 guard let id = instance.text("id") else { return nil }
                 return WorkRow(id: id, title: model.text("display_name") ?? id,
-                    detail: "RAM에 올라 있음 · 작업 여부 확인 필요", activity: .unknown, control: .release(.lmStudio, id, port),
+                    detail: tr("RAM에 올라 있음 · 작업 여부 확인 필요"), activity: .unknown, control: .release(.lmStudio, id, port),
                     observedModels: [model.text("key")].compactMap { $0 })
             }
         }
@@ -467,7 +470,7 @@ struct Providers: Sendable {
             guard let key = row.text("key"), let instances = row["loaded_instances"] as? [[String: Any]] else { return nil }
             return GPUModelReading(id: key, title: row.text("display_name") ?? key, resident: !instances.isEmpty)
         }
-        return ServerReading(id: .lmStudio, detail: "모델 \(models.count)개 · 포트 \(port)",
+        return ServerReading(id: .lmStudio, detail: tr("모델 \(models.count)개 · 포트 \(port)"),
             activity: models.isEmpty ? .empty : .unknown, models: models,
             gpuModels: gpuModels.count == data.objects("models").count ? gpuModels : nil)
     }
@@ -476,9 +479,9 @@ struct Providers: Sendable {
         guard let data = await http.json(port, "/v1/models"), data["data"] is [[String: Any]] else { return nil }
         let models = data.objects("data").compactMap { model -> WorkRow? in
             guard let id = model.text("id") else { return nil }
-            return WorkRow(id: id, title: id, detail: "게이트웨이에 표시된 모델 · 앱에서 내릴 수 있어요.", activity: .unknown)
+            return WorkRow(id: id, title: id, detail: tr("게이트웨이에 표시된 모델 · 앱에서 내릴 수 있어요."), activity: .unknown)
         }
-        return ServerReading(id: .mlxStudio, detail: "모델 \(models.count)개 · 포트 \(port)",
+        return ServerReading(id: .mlxStudio, detail: tr("모델 \(models.count)개 · 포트 \(port)"),
             activity: models.isEmpty ? .empty : .unknown, models: models)
     }
 
@@ -493,11 +496,11 @@ struct Providers: Sendable {
         let jobs = running.compactMap { comfyJob($0, running: true, stoppable: canInterrupt, port: port) } +
             pending.prefix(50).compactMap { comfyJob($0, running: false, stoppable: true, port: port) }
         let state: Activity = !running.isEmpty ? .working : !pending.isEmpty ? .queued : .idle
-        let control = WorkRow(id: "comfy-cache", title: "ComfyUI 모델과 캐시",
-            detail: "공식 API는 캐시에 남은 모델을 한꺼번에 내려요.", activity: state,
+        let control = WorkRow(id: "comfy-cache", title: tr("ComfyUI 모델과 캐시"),
+            detail: tr("공식 API는 캐시에 남은 모델을 한꺼번에 내려요."), activity: state,
             control: state == .idle ? .release(.comfy, "cache", port) : nil, bulk: state == .idle)
         let entryPoint = version.isEmpty ? nil : (system["argv"] as? [String])?.first
-        return ServerReading(id: .comfy, detail: "작업 \(running.count)개 · 대기 \(pending.count)개",
+        return ServerReading(id: .comfy, detail: tr("작업 \(running.count)개 · 대기 \(pending.count)개"),
             activity: state, models: [control], jobs: jobs, comfyEntryPoint: entryPoint)
     }
 
@@ -512,8 +515,9 @@ struct Providers: Sendable {
         guard item.count >= 3, let id = item[1] as? String else { return nil }
         let nodes = (item[2] as? [String: [String: Any]] ?? [:]).values
         let classes = nodes.compactMap { $0.text("class_type")?.lowercased() }
-        let media = classes.contains { $0.contains("video") || $0.contains("animate") } ? "영상 작업" :
-            classes.contains { $0.contains("image") } ? "이미지 작업" : "워크플로"
+        let kind: AIWorkKind? = classes.contains { $0.contains("video") || $0.contains("animate") } ? .video :
+            classes.contains { $0.contains("image") } ? .image : nil
+        let media = kind == .video ? tr("영상 작업") : kind == .image ? tr("이미지 작업") : tr("워크플로")
         let modelKeys: Set<String> = ["ckpt_name", "unet_name", "vae_name", "lora_name", "clip_name", "clip_name1",
             "clip_name2", "model_name", "control_net_name", "style_model_name", "upscale_model"]
         let names = Set(nodes.flatMap { note in
@@ -527,9 +531,9 @@ struct Providers: Sendable {
         let workflow = extras.text("workflow_name") ?? extras.object("extra_pnginfo").object("workflow").text("title")
         let title = workflow.map { "\(media) · \(String($0.prefix(80)))" } ?? number.map { "\(media) #\($0)" } ?? media
         return WorkRow(id: id, title: title,
-            detail: names.isEmpty ? "작업 \(id.prefix(8))" : names.joined(separator: " · "),
+            detail: names.isEmpty ? tr("작업 \(id.prefix(8))") : names.joined(separator: " · "),
             activity: running ? .working : .queued, control: stoppable ? .cancelComfy(id, running, port) : nil,
-            observedModels: Array(names))
+            observedModels: Array(names), workKind: kind)
     }
 
     func perform(_ action: Control, bulk: Bool = false, requireEffect: Bool = false,
@@ -541,7 +545,7 @@ struct Providers: Sendable {
                   fresh.models.contains(where: { $0.id == id && $0.control == action }),
                   await maySubmit() else { throw LocalError.changed }
             _ = try await http.data(port, "/gate/splash/sleep", body: ["video_port": Provider.comfy.port])
-            return "Splash 대화 캐시를 내렸어요. 다음 요청에서 다시 준비해요."
+            return tr("Splash 대화 캐시를 내렸어요. 다음 요청에서 다시 준비해요.")
         case .release(let provider, let id, let port):
             let fresh = await read(provider, port: port)
             guard provider.port == port, let row = fresh.models.first(where: { $0.id == id && $0.control == action }),
@@ -557,27 +561,27 @@ struct Providers: Sendable {
             }
             guard await maySubmit() else { throw LocalError.changed }
             _ = try await http.data(port, path, body: body)
-            if provider == .comfy { return "캐시 회수 요청을 보냈어요." }
+            if provider == .comfy { return tr("캐시 회수 요청을 보냈어요.") }
             let verified = await read(provider, port: port)
             if verified.activity == .offline {
                 if requireEffect { throw LocalError.changed }
-                return "서버가 요청을 받았어요. 결과 확인을 기다리는 중이에요."
+                return tr("서버가 요청을 받았어요. 결과 확인을 기다리는 중이에요.")
             }
             let remaining = verified.models.first(where: { $0.id == id })
             let released = remaining == nil || remaining?.activity == .unloaded
             if requireEffect && !released { throw LocalError.changed }
-            return released ? "모델을 내렸어요." :
-                "서버가 요청을 받았어요. 목록에 모델이 아직 표시돼요."
+            return released ? tr("모델을 내렸어요.") :
+                tr("서버가 요청을 받았어요. 목록에 모델이 아직 표시돼요.")
         case .cancelSplash(let id, let port):
             guard Provider.splash.port == port else { throw LocalError.changed }
             _ = try await http.data(port, "/gate/cancel", body: ["id": id])
-            return "이 요청의 중단을 보냈어요."
+            return tr("이 요청의 중단을 보냈어요.")
         case .cancelComfy(let id, let running, let port):
             let reading = await read(.comfy, port: port)
             guard Provider.comfy.port == port, reading.jobs.contains(where: { $0.control == action }) else { throw LocalError.changed }
             let body: [String: Any] = running ? ["prompt_id": id] : ["delete": [id]]
             _ = try await http.data(port, running ? "/interrupt" : "/queue", body: body)
-            return running ? "이 작업의 중단을 보냈어요." : "이 대기 작업의 취소를 보냈어요."
+            return running ? tr("이 작업의 중단을 보냈어요.") : tr("이 대기 작업의 취소를 보냈어요.")
         }
     }
 }
