@@ -52,8 +52,10 @@ import UniformTypeIdentifiers
 
 @MainActor private final class GPUBoostPlan: ObservableObject {
     @Published var target: GPUBoostTarget?
+    @Published var appScope: GPUBoostAppScope = .keep
     @Published var programs: [IdleProgram] = []
     @Published var selected = Set<IdleProgram.ID>()
+    var knownIdlePrograms = Set<IdleProgram.ID>()
     @Published var lastExcluded: IdleProgram?
 }
 
@@ -66,44 +68,49 @@ import UniformTypeIdentifiers
         let targets = model.gpuBoostTargets
         let target = plan.target
         let programs = plan.programs.filter { model.boostExcludedApps[$0.bundle] == nil }
-        let closing = programs.filter { plan.selected.contains($0.id) }
+        let scope = plan.appScope
+        let closing = scope.closing(programs, selected: plan.selected)
         VStack(alignment: .leading, spacing: 14) {
             Text(tr("램 쥐어짜기")).font(.title2.weight(.semibold))
             Text(tr("전체 메모리에서 \(model.boostReserveGiB)GB를 뺀 \(GPUBoostBudget.targetLimit(reserveGiB: model.boostReserveGiB) / 1024)GB로 GPU 상한을 올려요."))
                 .fixedSize(horizontal: false, vertical: true)
             Picker(tr("원복을 기다릴 모델"), selection: $plan.target) {
-                Text(tr("모델 선택")).tag(nil as GPUBoostTarget?)
+                Text(tr("직접 원복")).tag(nil as GPUBoostTarget?)
                 ForEach(targets) { item in Text(item.label).tag(Optional(item)) }
             }
-            if targets.isEmpty {
-                Text(tr("Splash, MLX-Serve 또는 LM Studio 서버를 켜면 모델을 고를 수 있어요."))
-                    .font(.callout).foregroundStyle(.secondary)
-            } else {
-                Text(tr("선택한 모델이 램에서 내려가면 GPU 상한을 실행 전 값으로 돌려요."))
-                    .font(.callout).foregroundStyle(.secondary)
-            }
+            Text(target == nil ? tr("GPU 상한 원복 버튼을 누르면 실행 전 값으로 돌아가요.") :
+                 tr("선택한 모델이 램에서 내려가면 GPU 상한을 실행 전 값으로 돌려요."))
+                .font(.callout).foregroundStyle(.secondary)
             Divider()
             HStack {
-                Text(tr("\(model.boostIdleMinutes)분 이상 쉬는 앱")).font(.headline)
+                Picker(tr("앱 종료"), selection: $plan.appScope) {
+                    ForEach(GPUBoostAppScope.allCases) { scope in
+                        Text(scope.title).tag(scope)
+                    }
+                }
                 Spacer()
                 Button(tr("제외 목록 관리")) {
                     dismiss()
                     model.screen = .settings
                 }.buttonStyle(.link)
             }
-            if programs.isEmpty {
-                Text(tr("닫을 앱이 없어요. 최근에 썼거나 사용 시간이 확인되지 않은 앱은 보호해요."))
-                    .font(.callout).foregroundStyle(.secondary)
-            } else {
-                Text(tr("최근에 쓴 앱부터 표시해요. 이번에 켜 둘 앱은 체크를 풀어요."))
-                    .font(.callout).foregroundStyle(.secondary)
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(programs) { program in
-                            programRow(program)
+            if plan.appScope != .keep {
+                if programs.isEmpty {
+                    Text(tr("닫을 수 있는 앱이 없어요."))
+                        .font(.callout).foregroundStyle(.secondary)
+                } else {
+                    Text(plan.appScope == .all ?
+                         tr("아래 앱에 모두 정상 종료를 요청해요. 시스템과 보호 앱은 계속 실행돼요.") :
+                         tr("\(model.boostIdleMinutes)분 이상 쉬는 앱이에요. 이번에 켜 둘 앱은 체크를 풀어요."))
+                        .font(.callout).foregroundStyle(.secondary)
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 10) {
+                            ForEach(programs) { program in
+                                programRow(program)
+                            }
                         }
-                    }
-                }.frame(maxHeight: 192)
+                    }.frame(maxHeight: 192)
+                }
             }
             if let excluded = plan.lastExcluded {
                 HStack {
@@ -115,45 +122,50 @@ import UniformTypeIdentifiers
                     }.buttonStyle(.link)
                 }.font(.callout)
             }
-            Text(tr("앱에 정상 종료를 요청해요. 저장을 묻는 창이 뜨면 확인해 주세요. GPU 상한을 바꾸려면 관리자 승인이 필요해요."))
+            Text(closing.isEmpty ? tr("GPU 상한을 바꾸려면 관리자 승인이 필요해요.") :
+                 tr("앱에 정상 종료를 요청해요. 저장을 묻는 창이 뜨면 확인해 주세요. GPU 상한을 바꾸려면 관리자 승인이 필요해요."))
                 .font(.callout).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack {
                 Spacer()
                 Button(tr("취소")) { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(closing.isEmpty ? tr("GPU 상한 올리기") : tr("앱 닫고 GPU 상한 올리기")) {
-                    guard let target else { return }
                     dismiss()
-                    Task { await model.startGPUBoost(target: target, programs: closing) }
+                    Task { await model.startGPUBoost(target: target, programs: closing, scope: scope) }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(model.runningAction || (target.map { !targets.contains($0) } ?? true))
+                .disabled(model.runningAction || model.fitBoostPreparing ||
+                          (target.map { !targets.contains($0) } ?? false))
             }
         }
         .padding(22)
         .frame(width: 495)
-        .onAppear {
-            plan.programs = model.idleProgramsForBoost()
-            plan.selected = Set(plan.programs.map(\.id))
-            if targets.count == 1 { plan.target = targets.first }
+        .onAppear { reloadPrograms(resetSelection: true) }
+        .onChange(of: plan.appScope) { reloadPrograms() }
+    }
+
+    private func reloadPrograms(resetSelection: Bool = false) {
+        let programs = model.idleProgramsForBoost(scope: plan.appScope)
+        if plan.appScope == .selected {
+            let current = Set(programs.map(\.id))
+            plan.selected = resetSelection ? current : plan.selected.union(current.subtracting(plan.knownIdlePrograms)).intersection(current)
+            plan.knownIdlePrograms = current
         }
+        plan.programs = programs
     }
 
     private func programRow(_ program: IdleProgram) -> some View {
         HStack(spacing: 10) {
-            Toggle(isOn: Binding(
-                get: { plan.selected.contains(program.id) },
-                set: { if $0 { plan.selected.insert(program.id) } else { plan.selected.remove(program.id) } }
-            )) {
-                HStack(spacing: 7) {
-                    BoostAppIcon(bundle: program.bundle)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(program.title)
-                        Text(tr("\(program.idleMinutes)분 이상 미사용"))
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-            }.toggleStyle(.checkbox)
+            if plan.appScope == .selected {
+                Toggle(isOn: Binding(
+                    get: { plan.selected.contains(program.id) },
+                    set: { if $0 { plan.selected.insert(program.id) } else { plan.selected.remove(program.id) } }
+                )) {
+                    programLabel(program)
+                }.toggleStyle(.checkbox)
+            } else {
+                programLabel(program)
+            }
             Spacer(minLength: 3)
             if program.bytes > 0 {
                 Text(ram(program.bytes)).monospacedDigit().foregroundStyle(.secondary)
@@ -163,6 +175,18 @@ import UniformTypeIdentifiers
                 plan.lastExcluded = program
             }
             .accessibilityLabel(tr("\(program.title) 항상 제외"))
+        }
+    }
+    private func programLabel(_ program: IdleProgram) -> some View {
+        HStack(spacing: 7) {
+            BoostAppIcon(bundle: program.bundle)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(program.title)
+                if plan.appScope == .selected {
+                    Text(tr("\(program.idleMinutes)분 이상 미사용"))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
         }
     }
 }

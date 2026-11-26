@@ -11,14 +11,38 @@ import SwiftUI
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         var history = AIActivityHistory()
         for step in 0...100 {
-            history.append(readings(step), at: now.addingTimeInterval(Double(step - 100) * 3))
+            history.append(readings(step), memory: memory(), at: now.addingTimeInterval(Double(step - 100) * 3))
         }
         precondition(history.samples.count == 101)
         precondition(history.samples.last?.bytes == 2 * gb)
         precondition(history.intervals.contains { $0.work.kind == .image })
         precondition(history.intervals.contains { $0.work.kind == .video })
         precondition(history.intervals.contains { $0.work.kind == .chat })
-        precondition(history.ceiling > Double(40 * gb))
+        precondition(history.totalRAM == 64 * gb)
+        let reading = history.samples.last!.ram!
+        precondition(reading.system == 5 * gb && reading.apps == 34 * gb && reading.models == 2 * gb)
+        precondition(reading.used == 41 * gb && reading.available == 23 * gb)
+        let saturated = RAMBreakdown(memory(), modelBytes: UInt64.max)
+        precondition(saturated.system == 0 && saturated.apps == 0 && saturated.used == 41 * gb)
+        var aliases = AIActivityHistory()
+        let shared = [
+            ServerReading(id: .mlxServe, detail: "", activity: .idle, bytes: 6 * gb),
+            ServerReading(id: .mlxStudio, detail: "", activity: .idle, bytes: 5 * gb),
+            ServerReading(id: .lmStudio, detail: "", activity: .empty, bytes: gb),
+            ServerReading(id: .splash, detail: "", activity: .unloaded, bytes: 9 * gb)
+        ]
+        aliases.append(shared, memory: memory(), listenerPIDs: [.mlxServe: 42, .mlxStudio: 42], at: now)
+        precondition(aliases.samples.last?.ram?.models == 6 * gb)
+        aliases.append(shared, at: now.addingTimeInterval(3))
+        precondition(aliases.samples.last?.ram == nil && aliases.totalRAM == 64 * gb)
+
+        let first = IdleProgram(id: .init(pid: 100, launched: now), bundle: "test.first", title: "First", bytes: 0, lastUsed: 0)
+        let second = IdleProgram(id: .init(pid: 200, launched: now), bundle: "test.second", title: "Second", bytes: 0, lastUsed: 0)
+        let chosen = Set([first.id])
+        precondition(GPUBoostAppScope.keep.closing([first, second], selected: chosen).isEmpty)
+        precondition(GPUBoostAppScope.selected.closing([first, second], selected: chosen).map(\.id) == [first.id])
+        precondition(GPUBoostAppScope.all.closing([first, second], selected: chosen).map(\.id) == [first.id, second.id])
+        precondition(GPUBoostAppScope.all.idleMinutes(30) == nil && GPUBoostAppScope.selected.idleMinutes(30) == 30)
         precondition(history.sample(near: now.addingTimeInterval(-150)) != nil)
         let firstImage = history.intervals.first { $0.work.kind == .image }!
         precondition(firstImage.start == now.addingTimeInterval(-225) && firstImage.end == now.addingTimeInterval(-135))
@@ -35,11 +59,11 @@ import SwiftUI
         gaps.append(readings(100), at: now.addingTimeInterval(360))
         precondition(gaps.samples.count == 1)
         var unknown = AIActivityHistory()
-        unknown.append([ServerReading(id: .splash, detail: "", activity: .offline)], at: now)
-        precondition(unknown.samples[0].bytes == nil && unknown.intervals.isEmpty)
+        unknown.append([ServerReading(id: .splash, detail: "", activity: .offline)], memory: memory(), at: now)
+        precondition(unknown.samples[0].bytes == nil && unknown.samples[0].ram?.models == 0 && unknown.intervals.isEmpty)
         var quiet = AIActivityHistory()
         for step in 0...100 {
-            quiet.append(readings(100), at: now.addingTimeInterval(Double(step - 100) * 3))
+            quiet.append(readings(100), memory: memory(), at: now.addingTimeInterval(Double(step - 100) * 3))
         }
         precondition(quiet.intervals.isEmpty && Set(quiet.samples.compactMap(\.bytes)).count == 1)
 
@@ -48,6 +72,7 @@ import SwiftUI
         try draw(AIActivityChart(history: quiet), name: "activity-idle", dark: true, width: 370, directory: directory)
         try draw(AIActivityChart(history: unknown), name: "activity-offline", dark: true, width: 370, directory: directory)
         let model = DashboardModel(historyURL: nil, preferences: nil)
+        try draw(GPUBoostSheet(model: model), name: "boost-manual", dark: true, width: 495, directory: directory)
         model.memory = memory()
         for step in 0...100 { model.sampleAIActivity(readings(step), at: now.addingTimeInterval(Double(step - 100) * 3)) }
         model.servers = readings(100)
@@ -63,9 +88,9 @@ import SwiftUI
         let chatting = (5..<39).contains(step) || (55..<74).contains(step)
         let imaging = (25..<55).contains(step)
         let video = (62..<90).contains(step)
-        let splash = ServerReading(id: .splash, detail: "개인 1 · 봇 3", activity: chatting ? .working : .unloaded,
+        let splash = ServerReading(id: .splash, detail: "개인 1 · 봇 3", activity: chatting ? .working : .idle,
             bytes: (chatting ? 22 : 2) * gb,
-            models: [WorkRow(id: "model", title: "Qwen3.8-27B", activity: chatting ? .working : .unloaded)],
+            models: [WorkRow(id: "model", title: "Qwen3.8-27B", activity: chatting ? .working : .idle)],
             jobs: chatting ? [WorkRow(id: "chat", title: "봇 1 · 예시 봇", activity: .working,
                                      observedModels: ["Qwen3.8-27B"], conversationTitle: "노래 제목과 장면 구상하기")] : [])
         var jobs: [WorkRow] = []

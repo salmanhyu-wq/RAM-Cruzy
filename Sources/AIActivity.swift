@@ -40,13 +40,58 @@ struct AIActivityWork: Identifiable {
     let activity: Activity
 }
 
+struct RAMBreakdown {
+    let total: UInt64
+    let system: UInt64
+    let apps: UInt64
+    let models: UInt64
+
+    var used: UInt64 { system + apps + models }
+    var available: UInt64 { total - used }
+
+    init(_ memory: MemoryReading, modelBytes: UInt64) {
+        total = memory.total
+        let used = min(memory.used, total)
+        models = min(modelBytes, used)
+        // Wired memory is the system baseline estimate. Count detected model RAM first.
+        system = min(memory.wired, used - models)
+        apps = used - models - system
+    }
+}
+
 struct AIActivitySample {
     let date: Date
     let servers: [ServerReading]
     let work: [AIActivityWork]
-    var measured: [ServerReading] { servers.filter { $0.activity != .offline && $0.hasObservedRAM && $0.bytes != nil } }
-    var bytes: UInt64? { measured.isEmpty ? nil : measured.reduce(0) { $0 + ($1.bytes ?? 0) } }
-    var sources: Set<Provider> { Set(measured.map(\.id)) }
+    let measured: [ServerReading]
+    let ram: RAMBreakdown?
+    let bytes: UInt64?
+
+    init(date: Date, servers: [ServerReading], work: [AIActivityWork], memory: MemoryReading?,
+         listenerPIDs: [Provider: Int32]) {
+        self.date = date
+        self.servers = servers
+        self.work = work
+        // Two provider adapters can observe the same listener. Count its RAM once.
+        let readings = servers.filter { $0.activity != .offline && $0.activity != .empty && $0.activity != .unloaded &&
+            $0.hasObservedRAM && $0.bytes != nil }.sorted {
+            if $0.bytes != $1.bytes { return ($0.bytes ?? 0) > ($1.bytes ?? 0) }
+            return $0.id.rawValue < $1.id.rawValue
+        }
+        var providers = Set<Provider>()
+        var listeners = Set<Int32>()
+        measured = readings.filter { reading in
+            guard providers.insert(reading.id).inserted else { return false }
+            guard let pid = listenerPIDs[reading.id] else { return true }
+            return listeners.insert(pid).inserted
+        }
+        let modelBytes = measured.reduce(UInt64(0)) { sum, reading in
+            let (total, overflow) = sum.addingReportingOverflow(reading.bytes ?? 0)
+            return overflow ? UInt64.max : total
+        }
+        bytes = measured.isEmpty ? nil : modelBytes
+        ram = memory.map { RAMBreakdown($0, modelBytes: modelBytes) }
+    }
 }
 
 struct AIActivityInterval {
@@ -60,7 +105,8 @@ struct AIActivityHistory {
     static let maximumGap: TimeInterval = 18
     private(set) var samples: [AIActivitySample] = []
 
-    mutating func append(_ servers: [ServerReading], at date: Date = .now) {
+    mutating func append(_ servers: [ServerReading], memory: MemoryReading? = nil,
+                         listenerPIDs: [Provider: Int32] = [:], at date: Date = .now) {
         let states: Set<Activity> = [.working, .queued, .loading, .stopping]
         let work = servers.filter { $0.activity != .offline }.flatMap { server -> [AIActivityWork] in
             let jobs = server.jobs.filter { states.contains($0.activity) }
@@ -79,7 +125,7 @@ struct AIActivityHistory {
         }
         let cutoff = date.addingTimeInterval(-Self.duration)
         samples = Array(samples.filter { $0.date >= cutoff && $0.date < date }.suffix(149))
-        samples.append(AIActivitySample(date: date, servers: servers, work: work))
+        samples.append(AIActivitySample(date: date, servers: servers, work: work, memory: memory, listenerPIDs: listenerPIDs))
     }
 
     var intervals: [AIActivityInterval] {
@@ -112,10 +158,8 @@ struct AIActivityHistory {
         return (completed + open.values).sorted { $0.start < $1.start }
     }
 
-    var ceiling: Double {
-        let peak = Double(samples.compactMap(\.bytes).max() ?? 0)
-        let gigabyte = Double(UInt64(1) << 30)
-        return max(gigabyte, pow(2, ceil(log2(max(peak * 1.15 / gigabyte, 1)))) * gigabyte)
+    var totalRAM: UInt64 {
+        samples.lazy.reversed().compactMap { $0.ram?.total }.first ?? ProcessInfo.processInfo.physicalMemory
     }
 
     func sample(near date: Date) -> AIActivitySample? {
@@ -133,11 +177,16 @@ struct AIActivityHistory {
     let history: AIActivityHistory
     var compact = false
     @StateObject private var cursor = AIActivityCursor()
-    private var gutter: CGFloat { compact ? 43 : 48 }
+    private var gutter: CGFloat { compact ? 49 : 53 }
     private var plotHeight: CGFloat { compact ? 73 : 86 }
     private var laneHeight: CGFloat { compact ? 14 : 17 }
     private var graphHeight: CGFloat { plotHeight + 17 }
     private var latest: AIActivitySample? { history.samples.last }
+    private let systemColor = Color(red: 0.47, green: 0.40, blue: 0.67)
+    private let appsColor = Color(red: 0.21, green: 0.51, blue: 0.79)
+    private let modelsColor = Color(red: 0.12, green: 0.67, blue: 0.56)
+    private let systemHelp = tr("macOS 기본 램은 고정 메모리를 바탕으로 추정해요. 로컬 모델 램은 서버가 보고한 값이나 프로세스 사용량을 바탕으로 추정해요.")
+
     private var start: Date { (latest?.date ?? .now).addingTimeInterval(-AIActivityHistory.duration) }
     private var selected: AIActivitySample? {
         guard let fraction = cursor.fraction else { return latest }
@@ -156,27 +205,42 @@ struct AIActivityHistory {
     }
     private var inspection: String {
         guard let sample = selected else { return detail }
-        let memory = sample.measured.map { $0.id.title + " " + ram($0.bytes) }
+        let memory = ramLabels(sample.ram).map(\.0) + sample.measured.map { $0.id.title + " " + ram($0.bytes) }
         return ([sample.date.formatted(date: .omitted, time: .standard)] + memory +
                 sample.work.map { $0.title + " · " + $0.activity.friendlyLabel }).joined(separator: "\n")
     }
 
+    private func ramLabels(_ reading: RAMBreakdown?) -> [(String, Color)] {
+        [
+            ("macOS " + ram(reading?.system), systemColor),
+            (tr("기타 앱") + " " + ram(reading?.apps), appsColor),
+            (tr("로컬 모델") + " " + ram(reading?.models), modelsColor)
+        ]
+    }
+
     var body: some View {
-        let titleLayout = compact ? AnyLayout(VStackLayout(alignment: .leading, spacing: 1)) :
-            AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 7))
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .center, spacing: 7) {
-                titleLayout {
-                    Text(tr("로컬 AI 램")).font(.system(size: compact ? 12 : 13, weight: .semibold))
-                        .foregroundStyle(MonitorPalette.text)
-                    Text(ram(selected?.bytes)).font(.system(size: 22, weight: .semibold)).monospacedDigit()
-                        .foregroundStyle(MonitorPalette.accent)
-                }
+            HStack(alignment: .firstTextBaseline, spacing: 7) {
+                Text(tr("RAM 사용량")).font(.system(size: compact ? 12 : 13, weight: .semibold))
+                    .foregroundStyle(MonitorPalette.text)
+                Text(tr("남은 램") + " " + ram(selected?.ram?.available))
+                    .font(.system(size: 11, weight: .medium)).monospacedDigit()
+                    .foregroundStyle(MonitorPalette.secondary)
                 Spacer(minLength: 0)
                 Text(cursor.fraction == nil ? tr("최근 5분") : selected?.date.formatted(.dateTime.hour().minute().second().locale(AppLanguage.active.locale)) ?? tr("기록 없음"))
                     .font(.system(size: 11)).foregroundStyle(MonitorPalette.secondary).monospacedDigit()
             }
-            .help(tr("연결된 AI 서버가 보고한 램과 확인된 서버 프로세스의 램을 합쳐요. 마우스를 올리면 서버별 수치와 작업을 볼 수 있어요."))
+            HStack(spacing: 10) {
+                ForEach(ramLabels(selected?.ram), id: \.0) { label, color in
+                    HStack(spacing: 4) {
+                        Circle().fill(color).frame(width: 6, height: 6)
+                        Text(label)
+                    }
+                }
+            }
+            .font(.system(size: 11)).foregroundStyle(MonitorPalette.text).monospacedDigit()
+            .lineLimit(1).minimumScaleFactor(0.8)
+            .help(systemHelp)
             GeometryReader { geometry in
                 let width = max(geometry.size.width - gutter - 8, 1)
                 ZStack(alignment: .topLeading) {
@@ -185,7 +249,7 @@ struct AIActivityHistory {
                     }
                     VStack(alignment: .leading, spacing: 0) {
                         VStack(alignment: .leading, spacing: 0) {
-                            Text(ram(UInt64(history.ceiling))).lineLimit(1).minimumScaleFactor(0.75)
+                            Text(ram(history.totalRAM)).lineLimit(1).minimumScaleFactor(0.75)
                             Spacer(minLength: 0)
                             Text("0")
                         }
@@ -233,8 +297,9 @@ struct AIActivityHistory {
             .help(inspection)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(tr("최근 5분 로컬 AI 램과 대화·그림·영상 작업 기록"))
-        .accessibilityValue(ram(selected?.bytes) + ". " + detail)
+        .accessibilityLabel(tr("최근 5분 RAM 사용량과 로컬 AI 작업 기록"))
+        .accessibilityValue(inspection)
+        .accessibilityHint(systemHelp)
     }
 
     private func draw(context: inout GraphicsContext, size: CGSize, width: CGFloat) {
@@ -242,7 +307,8 @@ struct AIActivityHistory {
         func x(_ date: Date) -> CGFloat {
             gutter + width * min(1, max(0, date.timeIntervalSince(start) / AIActivityHistory.duration))
         }
-        func y(_ bytes: UInt64) -> CGFloat { bottom - (bottom - 8) * min(1, Double(bytes) / history.ceiling) }
+        let total = Double(max(history.totalRAM, 1))
+        func y(_ bytes: UInt64) -> CGFloat { bottom - (bottom - 8) * min(1, Double(bytes) / total) }
         let grid = Path { path in
             for fraction in [0.0, 1.0 / 3, 2.0 / 3, 1.0] {
                 let height = 8 + (bottom - 8) * fraction
@@ -255,7 +321,35 @@ struct AIActivityHistory {
                 path.addLine(to: CGPoint(x: timeX, y: bottom))
             }
         }
-        context.stroke(grid, with: .color(MonitorPalette.line.opacity(0.85)), lineWidth: 0.75)
+        var segment: [(date: Date, ram: RAMBreakdown)] = []
+        func drawSegment() {
+            guard let first = segment.first else { return }
+            let xPositions = segment.count == 1
+                ? [max(gutter, x(first.date) - 1), min(gutter + width, x(first.date) + 1)]
+                : segment.map { x($0.date) }
+            let readings = segment.count == 1 ? [first.ram, first.ram] : segment.map(\.ram)
+            let edges: [(RAMBreakdown) -> UInt64] = [{ _ in 0 }, { $0.system }, { $0.system + $0.apps }, { $0.used }]
+            for (index, color) in [systemColor, appsColor, modelsColor].enumerated() {
+                let upper = readings.map(edges[index + 1])
+                let lower = readings.map(edges[index])
+                let upperPoints = zip(xPositions, upper).map { CGPoint(x: $0, y: y($1)) }
+                let lowerPoints = zip(xPositions, lower).map { CGPoint(x: $0, y: y($1)) }
+                let area = Path { path in
+                    path.addLines(upperPoints + Array(lowerPoints.reversed()))
+                    path.closeSubpath()
+                }
+                context.fill(area, with: .color(color.opacity(0.88)))
+            }
+        }
+        for sample in history.samples {
+            if sample.ram == nil || segment.last.map({ sample.date.timeIntervalSince($0.date) > AIActivityHistory.maximumGap }) == true {
+                drawSegment()
+                segment.removeAll(keepingCapacity: true)
+            }
+            if let reading = sample.ram { segment.append((sample.date, reading)) }
+        }
+        drawSegment()
+        context.stroke(grid, with: .color(MonitorPalette.line.opacity(0.65)), lineWidth: 0.75)
         let intervals = history.intervals
         for (index, kind) in lanes.enumerated() {
             let top = graphHeight + CGFloat(index) * laneHeight + (laneHeight - 3) / 2
@@ -273,31 +367,8 @@ struct AIActivityHistory {
                 }
             }
         }
-        var segment: [CGPoint] = []
-        var previous: AIActivitySample?
-        func drawSegment() {
-            guard let first = segment.first, let last = segment.last else { return }
-            var line = Path()
-            line.addLines(segment)
-            var area = line
-            area.addLine(to: CGPoint(x: last.x, y: bottom))
-            area.addLine(to: CGPoint(x: first.x, y: bottom))
-            area.closeSubpath()
-            context.fill(area, with: .linearGradient(Gradient(colors: [MonitorPalette.accent.opacity(0.17), MonitorPalette.accent.opacity(0.015)]),
-                                                     startPoint: .zero, endPoint: CGPoint(x: 0, y: bottom)))
-            context.stroke(line, with: .color(MonitorPalette.accent), style: StrokeStyle(lineWidth: 1.85, lineCap: .round, lineJoin: .round))
-        }
-        for sample in history.samples {
-            if let previous, sample.date.timeIntervalSince(previous.date) > AIActivityHistory.maximumGap || sample.sources != previous.sources {
-                drawSegment()
-                segment.removeAll(keepingCapacity: true)
-            }
-            if let bytes = sample.bytes { segment.append(CGPoint(x: x(sample.date), y: y(bytes))) }
-            previous = sample
-        }
-        drawSegment()
-        if let sample = selected, let bytes = sample.bytes {
-            let point = CGPoint(x: x(sample.date), y: y(bytes))
+        if let sample = selected, let reading = sample.ram {
+            let point = CGPoint(x: x(sample.date), y: y(reading.used))
             if cursor.fraction != nil {
                 let cursor = Path { path in
                     path.move(to: CGPoint(x: point.x, y: 5))

@@ -561,3 +561,27 @@
 "휴지통으로" = "Trash";
 "휴지통으로 옮기지 못했어요. %1$@" = "Could not move the model to the Trash. %1$@";
 "휴지통으로 이동" = "Move to Trash";
+
+"앱 유지" = "Keep apps open";
+"선택한 앱 종료" = "Quit selected apps";
+"종료 가능한 앱 모두 종료" = "Quit all eligible apps";
+"앱 종료" = "Quit apps";
+"직접 원복" = "Restore manually";
+"GPU 상한 원복 버튼을 누르면 실행 전 값으로 돌아가요." = "Click Restore GPU Limit to return to the previous limit.";
+"닫을 수 있는 앱이 없어요." = "There are no eligible apps to quit.";
+"아래 앱에 모두 정상 종료를 요청해요. 시스템과 보호 앱은 계속 실행돼요." = "All apps listed below will be asked to quit. System and protected apps stay open.";
+"%1$@분 이상 쉬는 앱이에요. 이번에 켜 둘 앱은 체크를 풀어요." = "These apps have been idle for at least %1$@ minutes. Uncheck any you want to keep open.";
+"GPU 상한을 바꾸려면 관리자 승인이 필요해요." = "Administrator approval is required to change the GPU limit.";
+"관리자 승인을 기다리고 있어요…" = "Waiting for administrator approval…";
+"%1$@개는 아직 열려 있어요." = "%1$@ are still open.";
+"GPU 메모리 상한을 적용하고 있어요…" = "Applying the GPU memory limit…";
+"GPU 상한 %1$@GB" = "GPU limit %1$@ GB";
+"선택한 모델이 내려가면 원복해요." = "The limit will be restored when the selected model unloads.";
+"5분 안에 선택한 모델을 올려 주세요." = "Load the selected model within five minutes.";
+"GPU 상한을 올렸어요. 필요할 때 GPU 상한 원복을 눌러 주세요." = "The GPU limit was raised. Click Restore GPU Limit when you are done.";
+"RAM 사용량" = "RAM usage";
+"남은 램" = "Available RAM";
+"기타 앱" = "Other apps";
+"로컬 모델" = "Local models";
+"macOS 기본 램은 고정 메모리를 바탕으로 추정해요. 로컬 모델 램은 서버가 보고한 값이나 프로세스 사용량을 바탕으로 추정해요." = "macOS RAM is estimated from wired memory. Local model RAM is estimated from server reports or process memory usage.";
+"최근 5분 RAM 사용량과 로컬 AI 작업 기록" = "RAM usage and local AI activity over the last five minutes";

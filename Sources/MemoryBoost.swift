@@ -80,6 +80,31 @@ struct GPUBoostBudget {
     }
 }
 
+enum GPUBoostAppScope: String, CaseIterable, Identifiable {
+    case keep, selected, all
+
+    var id: Self { self }
+    var title: String {
+        switch self {
+        case .keep: tr("앱 유지")
+        case .selected: tr("선택한 앱 종료")
+        case .all: tr("종료 가능한 앱 모두 종료")
+        }
+    }
+
+    func idleMinutes(_ configuredMinutes: Int) -> Int? {
+        self == .all ? nil : configuredMinutes
+    }
+
+    func closing(_ programs: [IdleProgram], selected: Set<IdleProgram.ID>) -> [IdleProgram] {
+        switch self {
+        case .keep: return []
+        case .selected: return programs.filter { selected.contains($0.id) }
+        case .all: return programs
+        }
+    }
+}
+
 struct IdleProgram: Identifiable {
     struct ID: Hashable {
         let pid: pid_t
@@ -147,15 +172,17 @@ struct IdleProgram: Identifiable {
         if let app = workspace.frontmostApplication { markUsed(app) }
     }
 
-    private func candidateLastUse(_ app: NSRunningApplication, minutes: Int, protectedPIDs: Set<pid_t>,
+    private func candidateLastUse(_ app: NSRunningApplication, minutes: Int?, protectedPIDs: Set<pid_t>,
                                   excludedBundles: Set<String>) -> TimeInterval? {
-        guard app.processIdentifier != getpid(), !app.isActive, !app.isTerminated,
+        guard app.processIdentifier != getpid(), !app.isTerminated,
               !protectedPIDs.contains(app.processIdentifier), app.activationPolicy == .regular,
               let url = app.bundleURL, !url.standardizedFileURL.path.hasPrefix("/System/"),
               let bundle = app.bundleIdentifier, !Self.protectedBundles.contains(bundle),
               !bundle.lowercased().hasSuffix(".studio-remote"), !excludedBundles.contains(bundle),
-              let id = identity(app), let last = lastUsed[id],
-              ProcessInfo.processInfo.systemUptime - last >= Double(minutes * 60) else { return nil }
+              let id = identity(app), let last = lastUsed[id] else { return nil }
+        if let minutes, app.isActive || ProcessInfo.processInfo.systemUptime - last < Double(minutes * 60) {
+            return nil
+        }
         let name = url.deletingPathExtension().lastPathComponent
         let protectedProvider = Provider.allCases.contains { provider in
             name == provider.title || name == (provider.title + " 한국어") ||
@@ -164,7 +191,7 @@ struct IdleProgram: Identifiable {
         return protectedProvider ? nil : last
     }
 
-    func candidates(minutes: Int, protectedPIDs: Set<pid_t>, excludedBundles: Set<String>,
+    func candidates(minutes: Int?, protectedPIDs: Set<pid_t>, excludedBundles: Set<String>,
                     memory: MemoryReading?) -> [IdleProgram] {
         observe()
         let footprints = Dictionary(uniqueKeysWithValues: (memory?.processes ?? []).map { ($0.id, $0.bytes) })
@@ -176,7 +203,7 @@ struct IdleProgram: Identifiable {
         }.sorted(by: IdleProgram.newestFirst)
     }
 
-    func requestQuit(_ programs: [IdleProgram], minutes: Int, protectedPIDs: Set<pid_t>,
+    func requestQuit(_ programs: [IdleProgram], minutes: Int?, protectedPIDs: Set<pid_t>,
                      excludedBundles: Set<String>) -> [NSRunningApplication] {
         observe()
         return programs.compactMap { program in

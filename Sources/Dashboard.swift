@@ -279,8 +279,11 @@ extension MemoryReading {
         updateServerProblems(current)
         servers = current
         monitorGPUBoost(current, started: started)
+        let activityPIDs = Dictionary(uniqueKeysWithValues: current.compactMap { reading in
+            listenerCache[reading.id]?.pid.flatMap { names[$0] == nil ? nil : (reading.id, $0) }
+        })
+        sampleAIActivity(current, listenerPIDs: activityPIDs)
         await syncMemoryFit()
-        sampleAIActivity(current)
         if let memory { record(memory: memory, servers: current) }
     }
 
@@ -346,8 +349,8 @@ extension MemoryReading {
         controlProblems[provider] = (provider.port, tr("서버 제어 요청을 완료하지 못했어요."))
     }
 
-    func sampleAIActivity(_ readings: [ServerReading], at date: Date = .now) {
-        aiActivity.append(readings, at: date)
+    func sampleAIActivity(_ readings: [ServerReading], listenerPIDs: [Provider: Int32] = [:], at date: Date = .now) {
+        aiActivity.append(readings, memory: memory, listenerPIDs: listenerPIDs, at: date)
     }
 
     func refreshLibrary() async {
@@ -1016,9 +1019,10 @@ extension MemoryReading {
         return protected
     }
 
-    func idleProgramsForBoost() -> [IdleProgram] {
-        idlePrograms.candidates(minutes: boostIdleMinutes, protectedPIDs: serverAppPIDs,
-                                excludedBundles: Set(boostExcludedApps.keys), memory: memory)
+    func idleProgramsForBoost(scope: GPUBoostAppScope = .selected) -> [IdleProgram] {
+        guard scope != .keep else { return [] }
+        return idlePrograms.candidates(minutes: scope.idleMinutes(boostIdleMinutes), protectedPIDs: serverAppPIDs,
+                                       excludedBundles: Set(boostExcludedApps.keys), memory: memory)
     }
 
     func excludeFromBoost(bundle: String, title: String) {
@@ -1029,7 +1033,7 @@ extension MemoryReading {
         boostExcludedApps.removeValue(forKey: bundle)
     }
 
-    func startGPUBoost(target: GPUBoostTarget, programs: [IdleProgram]) async {
+    func startGPUBoost(target: GPUBoostTarget?, programs: [IdleProgram], scope: GPUBoostAppScope) async {
         guard !runningAction, !boostRunning, !fitBoostPreparing else { return }
         cancelFitBoost()
         boostPlanShown = false
@@ -1039,48 +1043,66 @@ extension MemoryReading {
         var quitSummary = ""
         do {
             let limit = try GPUBoostBudget.enabledLimit(reserveGiB: boostReserveGiB)
-            notice = tr("관리자 승인 후 선택한 앱에 종료를 요청해요…")
+            notice = tr("관리자 승인을 기다리고 있어요…")
             try await connection.prepare(limit: limit)
-            let initial = await providers.read(target.provider, port: target.port)
-            guard target.port == target.provider.port,
-                  let model = initial.gpuModels?.first(where: { $0.id == target.modelID }) else {
-                throw ManagementError.message(tr("선택한 모델을 서버에서 확인하지 못했어요. 다시 선택해 주세요."))
+            var tracking: GPUBoostTracking?
+            if let target {
+                let initial = await providers.read(target.provider, port: target.port)
+                guard target.port == target.provider.port,
+                      let model = initial.gpuModels?.first(where: { $0.id == target.modelID }) else {
+                    throw ManagementError.message(tr("선택한 모델을 서버에서 확인하지 못했어요. 다시 선택해 주세요."))
+                }
+                tracking = GPUBoostTracking(target: target, resident: model.resident,
+                                            now: ProcessInfo.processInfo.systemUptime)
             }
-            let requested = idlePrograms.requestQuit(programs, minutes: boostIdleMinutes, protectedPIDs: serverAppPIDs,
-                                                     excludedBundles: Set(boostExcludedApps.keys))
-            let deadline = ContinuousClock.now + .seconds(5)
-            while requested.contains(where: { !$0.isTerminated }), ContinuousClock.now < deadline {
-                try await Task.sleep(for: .milliseconds(200))
+            if scope != .keep, !programs.isEmpty {
+                let requested = idlePrograms.requestQuit(programs, minutes: scope.idleMinutes(boostIdleMinutes),
+                                                         protectedPIDs: serverAppPIDs,
+                                                         excludedBundles: Set(boostExcludedApps.keys))
+                let deadline = ContinuousClock.now + .seconds(5)
+                while requested.contains(where: { !$0.isTerminated }), ContinuousClock.now < deadline {
+                    try await Task.sleep(for: .milliseconds(200))
+                }
+                let closed = requested.filter(\.isTerminated).count
+                quitSummary = tr("앱 \(closed)개를 닫았어요.") + " "
+                if programs.count > closed {
+                    quitSummary += tr("\(programs.count - closed)개는 아직 열려 있어요.") + " "
+                }
             }
-            let closed = requested.filter(\.isTerminated).count
-            quitSummary = tr("앱 \(closed)개를 닫았어요.") +
-                (programs.count > closed ? tr(" \(programs.count - closed)개는 아직 열려 있어요.") : "")
-            notice = quitSummary + tr(" GPU 메모리 상한을 적용하고 있어요…")
+            notice = quitSummary + tr("GPU 메모리 상한을 적용하고 있어요…")
             try await connection.activate()
             boostConnection = connection
-            boostTracking = GPUBoostTracking(target: target, resident: model.resident, now: ProcessInfo.processInfo.systemUptime)
-            boostStatus = tr("\(target.label) · GPU 상한 \(limit / 1024)GB")
+            boostTracking = tracking
+            let limitLabel = tr("GPU 상한 \(limit / 1024)GB")
+            boostStatus = target.map { $0.label + " · " + limitLabel } ?? limitLabel
             boostRunning = true
-            notice = quitSummary + (model.resident ? tr(" 선택한 모델이 내려가면 원복해요.") : tr(" 5분 안에 선택한 모델을 올려 주세요."))
+            if let tracking {
+                notice = quitSummary + (tracking.sawResident ? tr("선택한 모델이 내려가면 원복해요.") :
+                                         tr("5분 안에 선택한 모델을 올려 주세요."))
+            } else {
+                notice = quitSummary + tr("GPU 상한을 올렸어요. 필요할 때 GPU 상한 원복을 눌러 주세요.")
+            }
             await refresh()
         } catch {
-            notice = quitSummary.isEmpty ? error.localizedDescription : quitSummary + " " + error.localizedDescription
+            notice = quitSummary + error.localizedDescription
         }
     }
 
     private func monitorGPUBoost(_ readings: [ServerReading], started: TimeInterval) {
-        guard !boostRestoring, let connection = boostConnection, var tracking = boostTracking else { return }
-        let target = tracking.target
-        let reason: String?
-        if !connection.keepAlive() {
-            reason = tr("GPU 메모리 관리 연결이 끝났어요.")
-        } else if target.port != target.provider.port {
-            reason = tr("서버 연결 포트가 바뀌었어요.")
-        } else {
-            let reading = readings.first { $0.id == target.provider }
-            reason = tracking.update(reading?.gpuModels, at: started)
-            boostTracking = tracking
+        guard !boostRestoring, let connection = boostConnection else { return }
+        guard connection.keepAlive() else {
+            stopGPUBoost(reason: tr("GPU 메모리 관리 연결이 끝났어요."))
+            return
         }
+        guard var tracking = boostTracking else { return }
+        let target = tracking.target
+        guard target.port == target.provider.port else {
+            stopGPUBoost(reason: tr("서버 연결 포트가 바뀌었어요."))
+            return
+        }
+        let reading = readings.first { $0.id == target.provider }
+        let reason = tracking.update(reading?.gpuModels, at: started)
+        boostTracking = tracking
         if let reason { stopGPUBoost(reason: reason) }
     }
 
