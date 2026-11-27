@@ -7,6 +7,7 @@ struct ProcessMemory: Identifiable, Sendable {
     let title: String
     let bytes: UInt64
     let appID: String?
+    var executablePath: String? = nil
 }
 
 struct MemoryReading: Sendable {
@@ -126,14 +127,26 @@ enum MacMemory {
         return path.hasPrefix("/") ? URL(fileURLWithPath: path, isDirectory: true) : nil
     }
 
-    static func processArguments(_ pid: Int32) -> [String]? {
+    private static func processArgumentBuffer(_ pid: Int32) -> [UInt8]? {
         var mib = [CTL_KERN, KERN_PROCARGS2, pid]
         var size = 0
         guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, (5...1_048_576).contains(size) else { return nil }
         var bytes = [UInt8](repeating: 0, count: size)
         let result = bytes.withUnsafeMutableBytes { sysctl(&mib, 3, $0.baseAddress, &size, nil, 0) }
-        guard result == 0, size > MemoryLayout<Int32>.size, size <= bytes.count,
-              let endOfPath = bytes[MemoryLayout<Int32>.size..<size].firstIndex(of: 0) else { return nil }
+        guard result == 0, size > MemoryLayout<Int32>.size, size <= bytes.count else { return nil }
+        return Array(bytes.prefix(size))
+    }
+
+    private static func launchExecutablePath(_ pid: Int32) -> String? {
+        guard let bytes = processArgumentBuffer(pid) else { return nil }
+        let path = String(decoding: bytes.dropFirst(MemoryLayout<Int32>.size).prefix(while: { $0 != 0 }), as: UTF8.self)
+        return path.hasPrefix("/") ? path : nil
+    }
+
+    static func processArguments(_ pid: Int32) -> [String]? {
+        guard let bytes = processArgumentBuffer(pid),
+              let endOfPath = bytes.dropFirst(MemoryLayout<Int32>.size).firstIndex(of: 0) else { return nil }
+        let size = bytes.count
         let count = bytes.withUnsafeBytes { Int($0.loadUnaligned(as: Int32.self)) }
         guard (2...4096).contains(count) else { return nil }
         var start = endOfPath + 1
@@ -161,16 +174,16 @@ enum MacMemory {
                 }
             }
             guard result == 0, usage.ri_phys_footprint > 0 else { return nil }
-            if let app = apps[pid] {
-                return ProcessMemory(id: pid, title: app.name, bytes: usage.ri_phys_footprint, appID: app.id)
-            }
             let length = path.withUnsafeMutableBytes {
                 proc_pidpath(pid, $0.baseAddress, UInt32($0.count))
             }
-            let executable = length > 0
-                ? URL(fileURLWithPath: String(decoding: path.prefix(Int(length)).prefix(while: { $0 != 0 }), as: UTF8.self)).lastPathComponent
-                : tr("프로세스 \(pid)")
-            return ProcessMemory(id: pid, title: executable, bytes: usage.ri_phys_footprint, appID: nil)
+            let executablePath = length > 0
+                ? String(decoding: path.prefix(Int(length)).prefix(while: { $0 != 0 }), as: UTF8.self)
+                : launchExecutablePath(pid)
+            let executable = executablePath.map { URL(fileURLWithPath: $0).lastPathComponent }
+            let app = apps[pid]
+            return ProcessMemory(id: pid, title: app?.name ?? executable ?? tr("프로세스 \(pid)"),
+                                 bytes: usage.ri_phys_footprint, appID: app?.id, executablePath: executablePath)
         }.sorted { $0.bytes > $1.bytes }
     }
 }

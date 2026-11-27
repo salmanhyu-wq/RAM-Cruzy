@@ -5,6 +5,7 @@ enum Screen: String, CaseIterable, Identifiable {
     case hub = "관제탑"
     case models = "지금 쓰는 램", library = "저장한 모델", usage = "최근 사용", swap = "스왑 기록"
     case processes = "프로그램별 램", settings = "설정", about = "앱 정보"
+    case statistics = "사용 기록"
     var title: String { AppLanguage.active.string(rawValue) }
 
     var icon: String {
@@ -13,6 +14,7 @@ enum Screen: String, CaseIterable, Identifiable {
         case .models: "waveform.path.ecg"
         case .library: "shippingbox"
         case .usage: "chart.bar.xaxis"
+        case .statistics: "chart.xyaxis.line"
         case .swap: "arrow.left.arrow.right"
         case .processes: "square.grid.2x2"
         case .settings: "gearshape"
@@ -163,6 +165,7 @@ extension MemoryReading {
     @Published private(set) var library = [LocalModel]()
     @Published private(set) var importedUsage = [ModelUse]()
     @Published private(set) var history: History
+    private var usageRecorder = UsageRecorder()
     @Published private(set) var libraryLoaded = false
     private let historyURL: URL?
     private let preferences: UserDefaults?
@@ -220,9 +223,11 @@ extension MemoryReading {
         guard !polling else { return }
         polling = true
         defer { polling = false }
+        Task { await captureMacValue() }
         while !Task.isCancelled {
             await refresh()
-            try? await Task.sleep(for: .seconds(3))
+            let active = servers.contains { [.working, .loading].contains($0.activity) }
+            try? await Task.sleep(for: .seconds(active ? 1 : 3))
         }
     }
 
@@ -351,6 +356,29 @@ extension MemoryReading {
 
     func sampleAIActivity(_ readings: [ServerReading], listenerPIDs: [Provider: Int32] = [:], at date: Date = .now) {
         aiActivity.append(readings, memory: memory, listenerPIDs: listenerPIDs, at: date)
+        if let sample = aiActivity.samples.last, sample.ram != nil {
+            var usage = history.usageStatistics ?? UsageHistory(began: date)
+            usageRecorder.observe(sample, in: &usage)
+            history.usageStatistics = usage
+        }
+    }
+
+    private func captureMacValue() async {
+        guard historyURL != nil, history.macValue?.priceCheckedAt == nil else { return }
+        var detected = history.macValue
+        if detected == nil {
+            detected = await Task.detached(priority: .utility) { MacValue.detect() }.value
+        }
+        guard var value = detected else { return }
+        history.macValue = value
+        await value.fetchPrice()
+        history.macValue = value
+        flushHistory()
+    }
+
+    func saveActualPurchasePrice(_ price: Int?) {
+        history.actualPurchasePrice = price
+        flushHistory()
     }
 
     func refreshLibrary() async {
@@ -1189,12 +1217,35 @@ extension MemoryReading {
     }
 
     func quitApp(_ process: ProcessMemory) {
-        if comfyStopTarget?.pid == process.id {
-            confirmation = comfyStopPrompt()
-            return
-        }
-        guard canQuit(process), let app = NSRunningApplication(processIdentifier: process.id) else { return }
-        confirmation = Confirmation(title: tr("‘\(process.title)’ 종료"),
+        confirmation = appQuitPrompt(process)
+    }
+
+    func ramRowQuitPrompt(_ row: RAMProcessRow) -> Confirmation? {
+        guard !runningAction, let process = memory?.processes.first(where: { process in
+              process.appID != nil && process.ramListKey == row.id && !serverAppPIDs.contains(process.id) &&
+                  !Provider.allCases.contains(where: { provider in
+                      if let path = process.ramAppPath {
+                          return provider.applicationURL?.standardizedFileURL.path == path ||
+                              path.hasSuffix("/" + provider.title + ".app")
+                      }
+                      return false
+                  }) && canQuit(process)
+        }) else { return nil }
+        return appQuitPrompt(process)
+    }
+
+    func ramRowReleasePrompt(_ server: ServerReading) -> Confirmation? {
+        guard !runningAction, let latest = servers.first(where: { $0.id == server.id }),
+              latest.jobs.allSatisfy({ $0.activity == .empty || $0.activity == .idle }) else { return nil }
+        let targets = latest.models.filter { $0.control?.isRelease == true && [.idle, .unloaded].contains($0.activity) }
+        guard targets.count == 1, let row = targets.first else { return nil }
+        return actionPrompt(for: row)
+    }
+
+    private func appQuitPrompt(_ process: ProcessMemory) -> Confirmation? {
+        if comfyStopTarget?.pid == process.id { return comfyStopPrompt() }
+        guard canQuit(process), let app = NSRunningApplication(processIdentifier: process.id) else { return nil }
+        return Confirmation(title: tr("‘\(process.title)’ 종료"),
             detail: tr("프로그램에 정상 종료를 요청해요. 열어 둔 작업이 있다면 먼저 저장해 주세요."), button: tr("종료 요청")) { [weak self] in
             guard self?.canQuit(process) == true, !app.isTerminated else { return }
             self?.notice = app.terminate() ? tr("프로그램에 종료를 요청했어요.") : tr("프로그램에 종료를 요청할 수 없어요.")
@@ -1270,6 +1321,7 @@ struct Dashboard: View {
                             case .models: overview
                             case .library: LibraryScreen(model: model)
                             case .usage: UsageScreen(model: model)
+                            case .statistics: UsageStatisticsView(model: model)
                             case .swap: SwapScreen(model: model)
                             case .processes: processList
                             case .about: AboutScreen()
@@ -1318,6 +1370,7 @@ struct Dashboard: View {
             sidebarTitle(tr("모니터링"))
             nav(.hub)
             nav(.models)
+            nav(.statistics)
             nav(.processes)
             nav(.swap)
             sidebarTitle(tr("모델")).padding(.top, 13)
@@ -1456,7 +1509,10 @@ struct Dashboard: View {
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 0) {
                 MemoryReadout(memory: reading, pressure: pressure).frame(width: 142, alignment: .leading)
-                AIActivityChart(history: model.aiActivity)
+                AIActivityChart(history: model.aiActivity, openStatistics: { model.screen = .statistics },
+                                appQuitPrompt: model.ramRowQuitPrompt, modelReleasePrompt: model.ramRowReleasePrompt) {
+                    model.confirmation = $0
+                }
                     .padding(.leading, 16)
                     .frame(maxWidth: .infinity)
                     .overlay(alignment: .leading) {

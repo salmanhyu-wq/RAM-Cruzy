@@ -11,6 +11,7 @@ enum MonitorPalette {
     static let text = rgb(0xE9F6FA)
     static let secondary = rgb(0xAABDD0)
     static let accent = rgb(0x64F4D5)
+    static let availableRAM = rgb(0xFFA084)
     static let onAccent = rgb(0x102826)
     static let switchTint = rgb(0x2B786B)
     static let good = rgb(0xC2EA8C)
@@ -256,9 +257,13 @@ func memoryStatusText(_ value: Int32?) -> String {
                 }
                 HStack(alignment: .top, spacing: 0) {
                     MemoryReadout(memory: model.memory, pressure: model.displayPressure)
-                        .frame(width: 94, alignment: .leading)
-                    AIActivityChart(history: model.aiActivity, compact: true)
-                        .padding(.leading, 12)
+                        .frame(width: 88, alignment: .leading)
+                    AIActivityChart(history: model.aiActivity, compact: true, openStatistics: {
+                        open()
+                        model.screen = .statistics
+                    }, appQuitPrompt: model.ramRowQuitPrompt, modelReleasePrompt: model.ramRowReleasePrompt,
+                                     confirm: setPending)
+                        .padding(.leading, 9)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .overlay(alignment: .leading) {
                             Rectangle().fill(MonitorPalette.line).frame(width: 1).accessibilityHidden(true)
@@ -298,6 +303,7 @@ func memoryStatusText(_ value: Int32?) -> String {
                 }
                 .disabled(pending != nil)
                 Spacer()
+                headerButton(tr("활성 상태 보기 열기"), symbol: "waveform.path.ecg.rectangle", action: openActivityMonitor)
                 if let openSettings {
                     headerButton(tr("설정 열기"), symbol: "gearshape", action: openSettings)
                 }
@@ -306,6 +312,15 @@ func memoryStatusText(_ value: Int32?) -> String {
         }
         .frame(height: Self.headerHeight)
         .overlay(alignment: .bottom) { Rectangle().fill(MonitorPalette.line).frame(height: 1) }
+    }
+
+    private func openActivityMonitor() {
+        let workspace = NSWorkspace.shared
+        guard let app = workspace.urlForApplication(withBundleIdentifier: "com.apple.ActivityMonitor"),
+              workspace.open(app) else {
+            model.notice = tr("활성 상태 보기를 열 수 없어요.")
+            return
+        }
     }
 
     private func headerButton(_ title: String, symbol: String, selected: Bool = false,

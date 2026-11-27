@@ -14,6 +14,20 @@ import SwiftUI
             history.append(readings(step), memory: memory(), at: now.addingTimeInterval(Double(step - 100) * 3))
         }
         precondition(history.samples.count == 101)
+        var live = AIActivityHistory()
+        let loadedChat = WorkRow(id: "test", title: "Qwen", activity: .idle)
+        let queuedChat = WorkRow(id: "queued", title: "대기 슬롯", activity: .queued)
+        live.append([ServerReading(id: .splash, detail: "", activity: .working, models: [loadedChat], jobs: [queuedChat])],
+                    memory: memory(), at: now)
+        precondition(live.currentActivity(.chat) == .working)
+        precondition(live.intervals.contains { $0.work.kind == .chat && $0.work.activity == .working })
+        live.append([ServerReading(id: .splash, detail: "", activity: .idle, models: [loadedChat])],
+                    memory: memory(), at: now.addingTimeInterval(3))
+        precondition(live.currentActivity(.chat) == .idle)
+        live.append([ServerReading(id: .splash, detail: "", activity: .unloaded, bytes: 8 * gb, models: [loadedChat])],
+                    memory: memory(), at: now.addingTimeInterval(6))
+        precondition(live.currentActivity(.chat) == nil)
+        precondition(live.samples.last?.ram?.models == 8 * gb)
         precondition(history.samples.last?.bytes == 2 * gb)
         precondition(history.intervals.contains { $0.work.kind == .image })
         precondition(history.intervals.contains { $0.work.kind == .video })
@@ -22,8 +36,8 @@ import SwiftUI
         let reading = history.samples.last!.ram!
         precondition(reading.system == 5 * gb && reading.apps == 34 * gb && reading.models == 2 * gb)
         precondition(reading.used == 41 * gb && reading.available == 23 * gb)
-        let saturated = RAMBreakdown(memory(), modelBytes: UInt64.max)
-        precondition(saturated.system == 0 && saturated.apps == 0 && saturated.used == 41 * gb)
+        let saturated = RAMBreakdown(memory(), modelBytes: UInt64.max, observedAppBytes: 20 * gb)
+        precondition(saturated.system == 5 * gb && saturated.apps > 0 && saturated.used == 41 * gb)
         var aliases = AIActivityHistory()
         let shared = [
             ServerReading(id: .mlxServe, detail: "", activity: .idle, bytes: 6 * gb),
@@ -32,7 +46,39 @@ import SwiftUI
             ServerReading(id: .splash, detail: "", activity: .unloaded, bytes: 9 * gb)
         ]
         aliases.append(shared, memory: memory(), listenerPIDs: [.mlxServe: 42, .mlxStudio: 42], at: now)
-        precondition(aliases.samples.last?.ram?.models == 6 * gb)
+        precondition(aliases.samples.last?.ram?.models == 15 * gb)
+        let splashEngine = ProcessMemory(id: 500, title: "splash", bytes: 26 * gb, appID: nil,
+            executablePath: "/Applications/Splash.app/Contents/Resources/splash/engine/splash")
+        let splashServer = ProcessMemory(id: 501, title: "python3", bytes: gb, appID: nil,
+            executablePath: "/Applications/Splash.app/Contents/Resources/splash/python/bin/python3")
+        let browser = ProcessMemory(id: 600, title: "Browser", bytes: 15 * gb, appID: "test.browser",
+            executablePath: "/Applications/Browser.app/Contents/MacOS/Browser")
+        let service = ProcessMemory(id: 601, title: "WindowServer", bytes: gb, appID: nil,
+            executablePath: "/System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer")
+        let snapshot = memory(processes: [splashEngine, splashServer, browser, service])
+        var startChat = AIActivityHistory()
+        startChat.append([ServerReading(id: .splash, detail: "", activity: .working, bytes: 50 * gb)],
+                         memory: snapshot, at: now)
+        let working = startChat.samples.last!
+        precondition(working.measured.first?.bytes == 27 * gb)
+        precondition(working.ram!.apps > 0 && working.ram!.used == snapshot.used)
+        precondition(working.appRows.map(\.title) == ["Browser"] && working.systemRows.map(\.title) == ["WindowServer"])
+        startChat.append([ServerReading(id: .splash, detail: "", activity: .unloaded, bytes: 2 * gb)],
+                         memory: snapshot, at: now.addingTimeInterval(3))
+        precondition(startChat.samples.last?.measured.first?.bytes == 27 * gb)
+        let gpuSnapshot = memory(used: 51 * gb, wired: 32 * gb, processes: snapshot.processes)
+        startChat.append([ServerReading(id: .splash, detail: "", activity: .working, bytes: 26 * gb,
+                                        gpuModels: [GPUModelReading(id: "test", title: "Test", resident: true)])],
+                         memory: gpuSnapshot, at: now.addingTimeInterval(6))
+        let afterLoad = startChat.samples.last!.ram!
+        precondition(afterLoad.system == 6 * gb && afterLoad.models == 27 * gb && afterLoad.apps == 18 * gb)
+        precondition(afterLoad.used == 51 * gb)
+        let partial = memory(used: 39 * gb, wired: 18 * gb, processes: snapshot.processes)
+        startChat.append([ServerReading(id: .splash, detail: "", activity: .working, bytes: 13 * gb,
+                                        gpuModels: [GPUModelReading(id: "test", title: "Test", resident: false)])],
+                         memory: partial, at: now.addingTimeInterval(9))
+        let loading = startChat.samples.last!.ram!
+        precondition(loading.system == 5 * gb && loading.apps > 0 && loading.used == 39 * gb)
         aliases.append(shared, at: now.addingTimeInterval(3))
         precondition(aliases.samples.last?.ram == nil && aliases.totalRAM == 64 * gb)
 
@@ -100,9 +146,12 @@ import SwiftUI
         return [splash, ServerReading(id: .comfy, detail: "이미지·영상 생성", activity: jobs.isEmpty ? .idle : .working, bytes: bytes, jobs: jobs)]
     }
 
-    static func memory() -> MemoryReading {
-        MemoryReading(total: 64 * gb, used: 41 * gb, wired: 5 * gb, compressed: 3 * gb,
-                      swap: 2 * gb, swapIn: gb, swapOut: 2 * gb, pressure: 1, processes: [])
+    static func memory(used: UInt64 = 41 * gb, wired: UInt64 = 5 * gb, processes: [ProcessMemory] = [
+        ProcessMemory(id: 600, title: "Browser", bytes: 12 * gb, appID: "test.browser",
+                      executablePath: "/Applications/Browser.app/Contents/MacOS/Browser")
+    ]) -> MemoryReading {
+        MemoryReading(total: 64 * gb, used: used, wired: wired, compressed: 3 * gb,
+                      swap: 2 * gb, swapIn: gb, swapOut: 2 * gb, pressure: 1, processes: processes)
     }
 
     @MainActor static func draw<V: View>(_ content: V, name: String, dark: Bool, width: CGFloat,

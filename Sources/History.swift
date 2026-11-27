@@ -45,6 +45,9 @@ struct History: Codable {
     var days: [String: SwapDay] = [:]
     var events: [SwapEvent] = []
     var observed: [String: [String: ModelUse]] = [:]
+    var usageStatistics: UsageHistory?
+    var macValue: MacValue?
+    var actualPurchasePrice: Int?
 
     static func day(_ date: Date) -> String {
         let parts = Calendar.current.dateComponents([.year, .month, .day], from: date)

@@ -9,7 +9,7 @@ clang -O2 -Wall -Wextra -Werror -arch arm64 -mmacosx-version-min=14.0 \
     Sources/GPUWiredLimit.c -o "$app/Contents/MacOS/GPUWiredLimit"
 /usr/bin/codesign --force --sign - "$app/Contents/MacOS/GPUWiredLimit"
 swiftc -O -swift-version 5 -module-cache-path "$out/ModuleCache" \
-    Sources/AppLanguage.swift Sources/Memory.swift Sources/MemoryBoost.swift Sources/MemoryBoostView.swift Sources/Providers.swift Sources/Library.swift Sources/History.swift \
+    Sources/AppLanguage.swift Sources/Memory.swift Sources/MemoryBoost.swift Sources/MemoryBoostView.swift Sources/Providers.swift Sources/Library.swift Sources/History.swift Sources/UsageHistory.swift Sources/MacValue.swift Sources/UsageStatisticsView.swift \
     Sources/ModelFiles.swift Sources/ServerTools.swift Sources/ManagementViews.swift Sources/AIActivity.swift Sources/Dashboard.swift Sources/Views.swift Sources/MemoryMenu.swift -lsqlite3 \
     -target arm64-apple-macos14.0 -o "$app/Contents/MacOS/AIRAMManager"
 icons="$out/AppIcon.iconset"

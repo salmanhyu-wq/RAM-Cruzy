@@ -84,6 +84,8 @@ struct ServerReading: Identifiable {
     var problem: String?
     var transitioning = false
     var upstreamUnavailable = false
+    var generationObserved = false
+    var confirmedGenerationIDs: [String]?
 }
 
 enum LocalError: LocalizedError {
@@ -374,9 +376,15 @@ struct Providers: Sendable {
         let resident = weights["released"] as? Bool
         let stale = status.object("transport")["status_stale"] as? Bool == true
         let gpuModels = stale ? nil : resident.map { [GPUModelReading(id: model, title: model, resident: !$0)] }
+        let generationObserved = !stale &&
+            ["prefilling", "decoding"].contains { (scheduler.int($0) ?? 0) > 0 }
+        let confirmations = (gate["recent_jobs"] as? [[String: Any]])?.compactMap {
+            $0.text("state") == "finished" ? $0.text("id") : nil
+        }
         return ServerReading(id: .splash, detail: status["paused"] as? Bool == true ? tr("서버 꺼짐 · 수동으로 다시 켜기") : sleeping ? tr("캐시 비움 · 다음 요청에서 준비") : detail,
                              activity: activity, bytes: bytes, models: [visibleModel], jobs: jobs, recentJobs: Array(recent),
-                             paused: status["paused"] as? Bool == true, gpuModels: gpuModels, problem: problem)
+                             paused: status["paused"] as? Bool == true, gpuModels: gpuModels, problem: problem,
+                             generationObserved: generationObserved, confirmedGenerationIDs: confirmations)
     }
 
     func splashJob(_ item: [String: Any], label: String, port: Int) -> WorkRow {
