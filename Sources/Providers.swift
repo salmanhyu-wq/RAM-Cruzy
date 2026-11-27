@@ -504,9 +504,10 @@ struct Providers: Sendable {
         let jobs = running.compactMap { comfyJob($0, running: true, stoppable: canInterrupt, port: port) } +
             pending.prefix(50).compactMap { comfyJob($0, running: false, stoppable: true, port: port) }
         let state: Activity = !running.isEmpty ? .working : !pending.isEmpty ? .queued : .idle
-        let control = WorkRow(id: "comfy-cache", title: tr("ComfyUI 모델과 캐시"),
+        let cacheID = "comfy-cache"
+        let control = WorkRow(id: cacheID, title: tr("ComfyUI 모델과 캐시"),
             detail: tr("공식 API는 캐시에 남은 모델을 한꺼번에 내려요."), activity: state,
-            control: state == .idle ? .release(.comfy, "cache", port) : nil, bulk: state == .idle)
+            control: state == .idle ? .release(.comfy, cacheID, port) : nil, bulk: state == .idle)
         let entryPoint = version.isEmpty ? nil : (system["argv"] as? [String])?.first
         return ServerReading(id: .comfy, detail: tr("작업 \(running.count)개 · 대기 \(pending.count)개"),
             activity: state, models: [control], jobs: jobs, comfyEntryPoint: entryPoint)
